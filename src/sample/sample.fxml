@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="sample.Controller">
+   <children>
+      <HBox>
+         <children>
+              <MenuBar fx:id="menuBar" maxHeight="-Infinity" minHeight="-Infinity">
+                  <menus>
+                      <Menu mnemonicParsing="false" text="File">
+                          <items>
+                              <MenuItem fx:id="loadMenu" mnemonicParsing="false" text="Load" />
+                              <MenuItem fx:id="closeMenu" mnemonicParsing="false" text="Close" />
+                          </items>
+                      </Menu>
+                  </menus>
+              </MenuBar>
+         </children>
+      </HBox>
+          <Pane fx:id="mainPane" VBox.vgrow="ALWAYS" />
+   </children>
+</VBox>
