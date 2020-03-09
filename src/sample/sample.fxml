@@ -3,22 +3,19 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<VBox xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="sample.Controller">
+<VBox xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="sample.MainController">
    <children>
-      <HBox>
+          <Pane fx:id="mainPane" VBox.vgrow="ALWAYS" />
+      <HBox alignment="BOTTOM_CENTER" minHeight="-Infinity" prefHeight="100.0" prefWidth="200.0" VBox.vgrow="NEVER">
          <children>
-              <MenuBar fx:id="menuBar" maxHeight="-Infinity" minHeight="-Infinity">
-                  <menus>
-                      <Menu mnemonicParsing="false" text="File">
-                          <items>
-                              <MenuItem fx:id="loadMenu" mnemonicParsing="false" text="Load" />
-                              <MenuItem fx:id="closeMenu" mnemonicParsing="false" text="Close" />
-                          </items>
-                      </Menu>
-                  </menus>
-              </MenuBar>
+            <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+" />
+            <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
+            <Button fx:id="stepLeftButton" minWidth="80.0" mnemonicParsing="false" text="&lt;" />
+            <Button fx:id="stepUpButton" minWidth="80.0" mnemonicParsing="false" text="^" />
+            <Button fx:id="stepDownButton" minWidth="80.0" mnemonicParsing="false" text="v" />
+            <Button fx:id="stepRightButton" minWidth="80.0" mnemonicParsing="false" text="&gt;" />
+            <Button fx:id="quitButton" minWidth="80.0" mnemonicParsing="false" text="Quit" />
          </children>
       </HBox>
-          <Pane fx:id="mainPane" VBox.vgrow="ALWAYS" />
    </children>
 </VBox>

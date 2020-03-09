@@ -41,4 +41,9 @@ public class GISUtils {
         double lat_m = ((-( pixel_y - ( z * (TILESIZE/2) ) ) * PI2) /(TILESIZE * z));
         return Math.asin(Math.tanh(lat_m));
     }
+
+    public static double degToMeter(double meter) {
+        double deg_to_meter = (40000 * 1000) / 360;
+        return meter / deg_to_meter;
+    }
 }
