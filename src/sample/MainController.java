@@ -10,15 +10,10 @@ import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.shape.Polyline;
 
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.ResourceBundle;
+import java.util.*;
 
 public class MainController implements Initializable {
     @FXML
@@ -91,16 +86,22 @@ public class MainController implements Initializable {
             Platform.exit();
         });
         zoomInButton.setOnAction(e -> {
-            mMapZoom++;
-            mMapZoom = Math.min(MAX_ZOOM, mMapZoom);
-            calcMapCenterPos();
-            loadWays();
+            int zoom = mMapZoom + 1;
+            zoom = Math.min(MAX_ZOOM, zoom);
+            if (zoom != mMapZoom) {
+                mMapZoom = zoom;
+                calcMapCenterPos();
+                loadWays();
+            }
         });
         zoomOutButton.setOnAction(e -> {
-            mMapZoom--;
-            mMapZoom = Math.max(MIN_ZOOM, mMapZoom);
-            calcMapCenterPos();
-            loadWays();
+            int zoom = mMapZoom - 1;
+            zoom = Math.max(MIN_ZOOM, zoom);
+            if (zoom != mMapZoom) {
+                mMapZoom = zoom;
+                calcMapCenterPos();
+                loadWays();
+            }
         });
         stepLeftButton.setOnAction(e -> {
             moveMap(-100, 0);
@@ -158,7 +159,8 @@ public class MainController implements Initializable {
             List<Integer> typeFilterList = new ArrayList<>();
             Collections.addAll(typeFilterList, OSMUtils.AREA_TYPE_HIGHWAY_AREA,
                     OSMUtils.AREA_TYPE_AEROWAY,
-                    OSMUtils.AREA_TYPE_RAILWAY);
+                    OSMUtils.AREA_TYPE_RAILWAY,
+                    OSMUtils.AREA_TYPE_WATER);
             return typeFilterList;
         } else if (mMapZoom <= 15) {
             List<Integer> typeFilterList = new ArrayList<>();
@@ -166,7 +168,8 @@ public class MainController implements Initializable {
                     OSMUtils.AREA_TYPE_NATURAL,
                     OSMUtils.AREA_TYPE_HIGHWAY_AREA,
                     OSMUtils.AREA_TYPE_AEROWAY,
-                    OSMUtils.AREA_TYPE_RAILWAY);
+                    OSMUtils.AREA_TYPE_RAILWAY,
+                    OSMUtils.AREA_TYPE_WATER);
             return typeFilterList;
         } else if (mMapZoom <= 16) {
             List<Integer> typeFilterList = new ArrayList<>();
@@ -176,7 +179,8 @@ public class MainController implements Initializable {
                     OSMUtils.AREA_TYPE_AEROWAY,
                     OSMUtils.AREA_TYPE_RAILWAY,
                     OSMUtils.AREA_TYPE_TOURISM,
-                    OSMUtils.AREA_TYPE_LEISURE);
+                    OSMUtils.AREA_TYPE_LEISURE,
+                    OSMUtils.AREA_TYPE_WATER);
             return typeFilterList;
         } else {
             return null;
@@ -186,37 +190,29 @@ public class MainController implements Initializable {
     public void loadWays() {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
-        System.out.println("loadWays " + mMapZoom);
+        System.out.println("load " + mMapZoom);
+        Map<Integer, List<Polyline>> polylines = new HashMap<>();
+        polylines.put(0, new ArrayList<>());
+        polylines.put(1, new ArrayList<>());
+        polylines.put(2, new ArrayList<>());
 
         mainPane.getChildren().clear();
         mFetchBBox = getVisibleBBoxDegWithMargin();
-        JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), getStreetTypeListForZoom());
 
-        for (int i = 0; i < ways.size(); i++) {
-            JsonObject way = (JsonObject) ways.get(i);
-            JsonArray coords = (JsonArray) way.get("coords");
-            displayCoords(coords, Color.BLACK);
-        }
-
-        System.out.println("loadWays " + (System.currentTimeMillis() - t));
-
-        t = System.currentTimeMillis();
         JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0);
+                mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
 
-        for (int i = 0; i < areas.size(); i++) {
-            JsonObject area = (JsonObject) areas.get(i);
-            int areaType = (int) area.get("areaType");
-            JsonArray coords = (JsonArray) area.get("coords");
+        JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+                mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
 
-            for (int j = 0; j < coords.size(); j++) {
-                JsonArray coords2 = (JsonArray) coords.get(j);
-                displayCoords(coords2, Color.RED);
-            }
-        }
+        JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+                mFetchBBox.get(2), mFetchBBox.get(3), getStreetTypeListForZoom(), polylines, this);
 
-        System.out.println("loadAreas " + (System.currentTimeMillis() - t));
+        mainPane.getChildren().addAll(polylines.get(0));
+        mainPane.getChildren().addAll(polylines.get(1));
+        mainPane.getChildren().addAll(polylines.get(2));
+
+        System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
     }
 
     private double getPrefetchBoxMargin() {
@@ -244,7 +240,7 @@ public class MainController implements Initializable {
         return GISUtils.lat2pixel(mMapZoom, lat);
     }
 
-    private void displayCoords(JsonArray coords, Paint color) {
+    public Polyline displayCoords(JsonArray coords) {
         Polyline polyline = new Polyline();
         Double[] points = new Double[coords.size() * 2];
         int j = 0;
@@ -263,8 +259,7 @@ public class MainController implements Initializable {
         polyline.getPoints().addAll(points);
         polyline.setTranslateX(-mMapZeroX);
         polyline.setTranslateY(-mMapZeroY);
-        polyline.setStroke(color);
-        mainPane.getChildren().add(polyline);
+        return polyline;
     }
 
     private void calcMapCenterPos() {
@@ -330,5 +325,9 @@ public class MainController implements Initializable {
         List<Double> l = new ArrayList<>();
         Collections.addAll(l, bboxLon1, bboxLat1, bboxLon2, bboxLat2);
         return l;
+    }
+
+    public int getZoom() {
+        return mMapZoom;
     }
 }

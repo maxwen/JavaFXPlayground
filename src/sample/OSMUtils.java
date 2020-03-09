@@ -26,5 +26,6 @@ public class OSMUtils {
     public static final int AREA_TYPE_AMENITY=7;
     public static final int AREA_TYPE_BUILDING=8;
     public static final int AREA_TYPE_LEISURE=9;
+    public static final int AREA_TYPE_WATER=10;
 
 }

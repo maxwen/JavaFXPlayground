@@ -5,11 +5,13 @@ import com.github.cliftonlabs.json_simple.JsonException;
 import com.github.cliftonlabs.json_simple.JsonObject;
 import com.github.cliftonlabs.json_simple.Jsoner;
 import javafx.scene.chart.XYChart;
+import javafx.scene.shape.Polyline;
 import org.sqlite.SQLiteConfig;
 
 import java.sql.*;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,12 +38,12 @@ public class DatabaseController {
 
     public boolean connextAll() {
         try {
-            mEdgeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/edge.db");
-            mAreaConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/area.db");
-            mAddressConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/adress.db");
-            mWaysConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/ways.db");
-            mNodeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/nodes.db");
-            mAdminConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2/admin.db");
+            mEdgeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/edge.db");
+            mAreaConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/area.db");
+            mAddressConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/adress.db");
+            mWaysConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/ways.db");
+            mNodeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/nodes.db");
+            mAdminConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/admin.db");
             mConnected = true;
             return true;
         } catch (SQLException e) {
@@ -83,17 +85,22 @@ public class DatabaseController {
     }
 
     private String filterListToIn(List<Integer> typeFilterList) {
-        StringBuffer buffer = new StringBuffer();
-        buffer.append('(');
-        typeFilterList.stream().forEach(val -> {
-            buffer.append(val + ",");
-        });
-        String bufferString = buffer.toString().substring(0, buffer.length() - 3);
-        bufferString += ')';
-        return bufferString;
+        if (typeFilterList != null) {
+            StringBuffer buffer = new StringBuffer();
+            typeFilterList.stream().forEach(val -> {
+                buffer.append(val + ",");
+            });
+
+            String bufferString = buffer.toString().substring(0, buffer.length() - 1);
+            bufferString = "(" + bufferString + ")";
+            return bufferString;
+        }
+        return "";
     }
 
-    public JsonArray getWaysInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax, List<Integer> typeFilterList) {
+    public JsonArray getWaysInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
+                                           List<Integer> typeFilterList, Map<Integer, List<Polyline>> polylines,
+                                           MainController controller) {
         Statement stmt = null;
         JsonArray ways = new JsonArray();
 
@@ -102,9 +109,9 @@ public class DatabaseController {
             stmt = mWaysConnection.createStatement();
             ResultSet rs;
             if (typeFilterList != null && typeFilterList.size() != 0) {
-                rs = stmt.executeQuery(String.format("SELECT wayId, tags, refs, streetInfo, name, ref, maxspeed, poiList, layer, AsText(geom) FROM wayTable WHERE ROWID IN (SELECT rowid FROM idx_wayTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND streetTypeId IN %s ORDER BY streetTypeId, layer", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
+                rs = stmt.executeQuery(String.format("SELECT wayId, tags, refs, streetInfo, name, ref, maxspeed, poiList, layer, AsText(geom) FROM wayTable WHERE ROWID IN (SELECT rowid FROM idx_wayTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND streetTypeId IN %s ORDER BY streetTypeId", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
             } else {
-                rs = stmt.executeQuery(String.format("SELECT wayId, tags, refs, streetInfo, name, ref, maxspeed, poiList, layer, AsText(geom) FROM wayTable WHERE ROWID IN (SELECT rowid FROM idx_wayTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) ORDER BY streetTypeId, layer", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
+                rs = stmt.executeQuery(String.format("SELECT wayId, tags, refs, streetInfo, name, ref, maxspeed, poiList, layer, AsText(geom) FROM wayTable WHERE ROWID IN (SELECT rowid FROM idx_wayTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) ORDER BY streetTypeId", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
             }
 
             int count = 0;
@@ -113,9 +120,22 @@ public class DatabaseController {
                 way.put("id", rs.getInt(1));
                 way.put("name", rs.getString(5));
                 way.put("nameRef", rs.getString(6));
-                way.put("layer", rs.getString(9));
-                way.put("coords", createCoordsFromLineString(rs.getString(10)));
-                way.put("streetInfo", rs.getString(4));
+                int layer = rs.getInt(9);
+                way.put("layer", layer);
+                int streetTypeInfo = rs.getInt(4);
+                way.put("streetInfo", streetTypeInfo);
+                // streetTypeId, oneway, roundabout, tunnel, bridge = osmParserData.decodeStreetInfo2(streetInfo)
+                /*oneway=(streetInfo&63)>>4
+                roundabout=(streetInfo&127)>>6
+                tunnel=(streetInfo&255)>>7
+                bridge=(streetInfo&511)>>8
+                streetTypeId=(streetInfo&15)*/
+
+                int streetTypeId = streetTypeInfo & 15;
+                int isTunnel = (streetTypeInfo & 255) >> 7;
+                int isBridge = (streetTypeInfo & 511) >> 8;
+
+                way.put("streetTypeId", streetTypeId);
                 String tags = rs.getString(2);
                 try {
                     if (tags != null && tags.length() != 0) {
@@ -140,7 +160,18 @@ public class DatabaseController {
                 } catch (JsonException e) {
                     System.out.println(e.getMessage());
                 }
+
                 ways.add(way);
+                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(10)));
+                OSMStyle.amendWay(way, polyline, controller.getZoom());
+                if (layer < 0 || isTunnel == 1) {
+                    polylines.get(0).add(polyline);
+                } else if (isBridge == 1) {
+                    polylines.get(2).add(polyline);
+                } else {
+                    polylines.get(1).add(polyline);
+                }
+
                 count++;
             }
             System.out.println("getWaysInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
@@ -158,7 +189,9 @@ public class DatabaseController {
         return ways;
     }
 
-    public JsonArray getAreasInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax, List<Integer> typeFilterList, boolean withSimplify, double tolerance) {
+    public JsonArray getAreasInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
+                                            List<Integer> typeFilterList, boolean withSimplify, double tolerance,
+                                            Map<Integer, List<Polyline>> polylines, MainController controller) {
         Statement stmt = null;
         JsonArray areas = new JsonArray();
 
@@ -174,9 +207,9 @@ public class DatabaseController {
             }
             System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
             if (typeFilterList != null && typeFilterList.size() != 0) {
-                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY type", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
+                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
             } else {
-                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) ORDER BY type", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
+                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
             }
 
             /*osmId=x[0]
@@ -191,7 +224,6 @@ public class DatabaseController {
                 area.put("osmId", rs.getInt(1));
                 area.put("areaType", rs.getInt(2));
                 area.put("layer", rs.getInt(4));
-                area.put("coords", createCoordsFromPolygonString(rs.getString(5)));
                 String tags = rs.getString(3);
                 try {
                     if (tags != null && tags.length() != 0) {
@@ -201,9 +233,87 @@ public class DatabaseController {
                     System.out.println(e.getMessage());
                 }
                 areas.add(area);
+
+                JsonArray coords = createCoordsFromPolygonString(rs.getString(5));
+                for (int j = 0; j < coords.size(); j++) {
+                    JsonArray innerCoords = (JsonArray) coords.get(j);
+                    Polyline polyline = controller.displayCoords(innerCoords);
+                    OSMStyle.amendArea(area, polyline, controller.getZoom());
+                    polylines.get(1).add(polyline);
+                }
+
                 count++;
             }
+
             System.out.println("getAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return areas;
+    }
+
+    public JsonArray getLineAreasInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
+                                                List<Integer> typeFilterList, boolean withSimplify, double tolerance,
+                                                Map<Integer, List<Polyline>> polylines, MainController controller) {
+        Statement stmt = null;
+        JsonArray areas = new JsonArray();
+
+        try {
+            long t = System.currentTimeMillis();
+            stmt = mAreaConnection.createStatement();
+            ResultSet rs;
+            tolerance = GISUtils.degToMeter(tolerance);
+
+            String geom = "AsText(geom)";
+            if (withSimplify) {
+                geom = String.format("AsText(Simplify(geom, %f))", tolerance);
+            }
+            System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
+
+            if (typeFilterList != null && typeFilterList.size() != 0) {
+                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaLineTable WHERE ROWID IN (SELECT rowid FROM idx_areaLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
+            } else {
+                rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaLineTable WHERE ROWID IN (SELECT rowid FROM idx_areaLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
+            }
+            int count = 0;
+            while (rs.next()) {
+                JsonObject area = new JsonObject();
+                area.put("osmId", rs.getInt(1));
+                area.put("areaType", rs.getInt(2));
+                int layer = rs.getInt(4);
+                area.put("layer", layer);
+                System.out.println(rs.getInt(4));
+                String tags = rs.getString(3);
+                try {
+                    if (tags != null && tags.length() != 0) {
+                        area.put("tags", Jsoner.deserialize(tags));
+                    }
+                } catch (JsonException e) {
+                    System.out.println(e.getMessage());
+                }
+                areas.add(area);
+                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(5)));
+                OSMStyle.amendLineArea(area, polyline, controller.getZoom());
+                if (layer < 0) {
+                    polylines.get(0).add(polyline);
+                } else if (layer > 0) {
+                    polylines.get(2).add(polyline);
+                } else {
+                    polylines.get(1).add(polyline);
+                }
+
+                count++;
+            }
+
+            System.out.println("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
             System.out.println(e.getMessage());
