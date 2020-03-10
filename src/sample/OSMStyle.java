@@ -8,12 +8,15 @@ import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.shape.StrokeLineJoin;
 import javafx.scene.shape.StrokeType;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 public class OSMStyle {
 
     private static HashMap<Integer, Color> mStreetColors;
-    
+    private static HashMap<String, Color> mLineColors;
+
     private static void initStreetColors() {
         mStreetColors = new HashMap<>();
         mStreetColors.put(OSMUtils.STREET_TYPE_MOTORWAY,  Color.rgb(0xe8, 0x92, 0xa2));
@@ -31,6 +34,9 @@ public class OSMStyle {
         mStreetColors.put(OSMUtils.STREET_TYPE_ROAD,  Color.rgb(0xff, 0xff, 0xff));
         mStreetColors.put(OSMUtils.STREET_TYPE_SERVICE,  Color.rgb(0xff, 0xff, 0xff));
         mStreetColors.put(OSMUtils.STREET_TYPE_LIVING_STREET,  Color.rgb(0xff, 0xff, 0xff));
+
+        mLineColors = new HashMap();
+        mLineColors.put("adminAreaColor", Color.rgb(0xac, 0x46, 0xac));
     }
 
     private static Color getStreetColor(int streetTypeId) {
@@ -38,6 +44,13 @@ public class OSMStyle {
             initStreetColors();
         }
         return mStreetColors.get(streetTypeId);
+    }
+
+    private static Color getLineColor(String lineType) {
+        if (mLineColors == null) {
+            initStreetColors();
+        }
+        return mLineColors.get(lineType);
     }
 
     public static Paint getAreaColor(int areaType) {
@@ -112,6 +125,43 @@ public class OSMStyle {
         return 0.2;
     }
 
+    private static int getRailwayPenWidthForZoom(int zoom) {
+        if (zoom == 20) {
+            return 12;
+        }
+        if (zoom == 19) {
+            return 8;
+        }
+        if (zoom == 18) {
+            return 4;
+        }
+        if (zoom == 17) {
+            return 3;
+        }
+        if (zoom == 16) {
+            return 2;
+        }
+        return 1;
+    }
+    private static int getAdminLinePenWidthForZoom(int zoom) {
+        if (zoom == 20) {
+            return 8;
+        }
+        if (zoom == 19) {
+            return 8;
+        }
+        if (zoom == 18) {
+            return 4;
+        }
+        if (zoom == 17) {
+            return 3;
+        }
+        if (zoom == 16) {
+            return 2;
+        }
+        return 1;
+    }
+
     public static void amendWay(JsonObject way, Polyline wayLine, int zoom) {
         int streetTypeId = (int) way.get("streetTypeId");
         wayLine.setStroke(getStreetColor(streetTypeId));
@@ -130,7 +180,16 @@ public class OSMStyle {
         int areaType = (int) area.get("areaType");
         areaLine.setStroke(getAreaColor(areaType));
         if (areaType == OSMUtils.AREA_TYPE_RAILWAY) {
-            areaLine.getStrokeDashArray().addAll(4d);
+            double width = getRailwayPenWidthForZoom(zoom);
+            areaLine.getStrokeDashArray().addAll(2 * width);
+            areaLine.setStrokeWidth(width);
         }
+    }
+    public static void amendAdminLine(JsonObject adminLine, Polyline areaLine, int zoom) {
+        int adminLevel = (int) adminLine.get("adminLevel");
+        double width = getAdminLinePenWidthForZoom(zoom);
+        areaLine.getStrokeDashArray().addAll(2 * width);
+        areaLine.setStroke(getLineColor("adminAreaColor"));
+        areaLine.setStrokeWidth(width);
     }
 }

@@ -2,6 +2,7 @@
 
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
 
 <VBox xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="sample.MainController">
    <children>
@@ -9,6 +10,11 @@
       <HBox alignment="BOTTOM_CENTER" minHeight="-Infinity" prefHeight="100.0" prefWidth="200.0" VBox.vgrow="NEVER">
          <children>
             <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+" />
+            <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0" text="-">
+               <font>
+                  <Font name="System Bold" size="19.0" />
+               </font>
+            </Label>
             <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
             <Button fx:id="stepLeftButton" minWidth="80.0" mnemonicParsing="false" text="&lt;" />
             <Button fx:id="stepUpButton" minWidth="80.0" mnemonicParsing="false" text="^" />

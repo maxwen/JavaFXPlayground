@@ -28,4 +28,5 @@ public class OSMUtils {
     public static final int AREA_TYPE_LEISURE=9;
     public static final int AREA_TYPE_WATER=10;
 
+    public static final String ADMIN_LEVEL_SET="(2, 4, 6, 8)";
 }

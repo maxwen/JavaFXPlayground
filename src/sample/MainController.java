@@ -8,6 +8,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
 import javafx.scene.shape.Polyline;
@@ -32,8 +33,10 @@ public class MainController implements Initializable {
     Button stepRightButton;
     @FXML
     Pane mainPane;
+    @FXML
+    Label zoomLabel;
 
-    private static final int MIN_ZOOM = 12;
+    private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
     private int mMapZoom = 16;
     private double mMapZeroX;
@@ -90,6 +93,7 @@ public class MainController implements Initializable {
             zoom = Math.min(MAX_ZOOM, zoom);
             if (zoom != mMapZoom) {
                 mMapZoom = zoom;
+                zoomLabel.setText(String.valueOf(mMapZoom));
                 calcMapCenterPos();
                 loadWays();
             }
@@ -99,6 +103,7 @@ public class MainController implements Initializable {
             zoom = Math.max(MIN_ZOOM, zoom);
             if (zoom != mMapZoom) {
                 mMapZoom = zoom;
+                zoomLabel.setText(String.valueOf(mMapZoom));
                 calcMapCenterPos();
                 loadWays();
             }
@@ -115,6 +120,7 @@ public class MainController implements Initializable {
         stepDownButton.setOnAction(e -> {
             moveMap(0, 100);
         });
+        zoomLabel.setText(String.valueOf(mMapZoom));
         //mainPane.setOnMousePressed(mouseHandler);
         mainPane.setOnMouseReleased(mouseHandler);
         mainPane.setOnMouseDragged(mouseHandler);
@@ -122,7 +128,16 @@ public class MainController implements Initializable {
 
 
     private List<Integer> getStreetTypeListForZoom() {
-        if (mMapZoom <= 13) {
+        if (mMapZoom <= 12) {
+            List<Integer> typeFilterList = new ArrayList<>();
+            Collections.addAll(typeFilterList, OSMUtils.STREET_TYPE_MOTORWAY,
+                    OSMUtils.STREET_TYPE_MOTORWAY_LINK,
+                    OSMUtils.STREET_TYPE_TRUNK,
+                    OSMUtils.STREET_TYPE_TRUNK_LINK,
+                    OSMUtils.STREET_TYPE_PRIMARY,
+                    OSMUtils.STREET_TYPE_PRIMARY_LINK);
+            return typeFilterList;
+        } else if (mMapZoom <= 14) {
             List<Integer> typeFilterList = new ArrayList<>();
             Collections.addAll(typeFilterList, OSMUtils.STREET_TYPE_MOTORWAY,
                     OSMUtils.STREET_TYPE_MOTORWAY_LINK,
@@ -131,7 +146,9 @@ public class MainController implements Initializable {
                     OSMUtils.STREET_TYPE_PRIMARY,
                     OSMUtils.STREET_TYPE_PRIMARY_LINK,
                     OSMUtils.STREET_TYPE_SECONDARY,
-                    OSMUtils.STREET_TYPE_SECONDARY_LINK);
+                    OSMUtils.STREET_TYPE_SECONDARY_LINK,
+                    OSMUtils.STREET_TYPE_TERTIARY,
+                    OSMUtils.STREET_TYPE_TERTIARY_LINK);
             return typeFilterList;
         } else if (mMapZoom <= 16) {
             List<Integer> typeFilterList = new ArrayList<>();
@@ -155,18 +172,14 @@ public class MainController implements Initializable {
     }
 
     private List<Integer> getAreaTypeListForZoom() {
-        if (mMapZoom <= 14) {
+        if (mMapZoom <= 12) {
             List<Integer> typeFilterList = new ArrayList<>();
-            Collections.addAll(typeFilterList, OSMUtils.AREA_TYPE_HIGHWAY_AREA,
-                    OSMUtils.AREA_TYPE_AEROWAY,
-                    OSMUtils.AREA_TYPE_RAILWAY,
-                    OSMUtils.AREA_TYPE_WATER);
+            Collections.addAll(typeFilterList,
+                    OSMUtils.AREA_TYPE_RAILWAY);
             return typeFilterList;
-        } else if (mMapZoom <= 15) {
+        } else if (mMapZoom < 14) {
             List<Integer> typeFilterList = new ArrayList<>();
-            Collections.addAll(typeFilterList, OSMUtils.AREA_TYPE_LANDUSE,
-                    OSMUtils.AREA_TYPE_NATURAL,
-                    OSMUtils.AREA_TYPE_HIGHWAY_AREA,
+            Collections.addAll(typeFilterList,
                     OSMUtils.AREA_TYPE_AEROWAY,
                     OSMUtils.AREA_TYPE_RAILWAY,
                     OSMUtils.AREA_TYPE_WATER);
@@ -192,6 +205,7 @@ public class MainController implements Initializable {
         long t = System.currentTimeMillis();
         System.out.println("load " + mMapZoom);
         Map<Integer, List<Polyline>> polylines = new HashMap<>();
+        polylines.put(-1, new ArrayList<>());
         polylines.put(0, new ArrayList<>());
         polylines.put(1, new ArrayList<>());
         polylines.put(2, new ArrayList<>());
@@ -199,15 +213,21 @@ public class MainController implements Initializable {
         mainPane.getChildren().clear();
         mFetchBBox = getVisibleBBoxDegWithMargin();
 
-        JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+        if (mMapZoom > 12) {
+            JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+                    mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
 
-        JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+            JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
                 mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+        }
 
         JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
                 mFetchBBox.get(2), mFetchBBox.get(3), getStreetTypeListForZoom(), polylines, this);
 
+        JsonArray adminLines = DatabaseController.getInstance().getAdminLineInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+                mFetchBBox.get(2), mFetchBBox.get(3), OSMUtils.ADMIN_LEVEL_SET, mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+
+        mainPane.getChildren().addAll(polylines.get(-1));
         mainPane.getChildren().addAll(polylines.get(0));
         mainPane.getChildren().addAll(polylines.get(1));
         mainPane.getChildren().addAll(polylines.get(2));

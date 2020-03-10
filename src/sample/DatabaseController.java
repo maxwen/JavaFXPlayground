@@ -290,7 +290,6 @@ public class DatabaseController {
                 area.put("areaType", rs.getInt(2));
                 int layer = rs.getInt(4);
                 area.put("layer", layer);
-                System.out.println(rs.getInt(4));
                 String tags = rs.getString(3);
                 try {
                     if (tags != null && tags.length() != 0) {
@@ -326,6 +325,56 @@ public class DatabaseController {
             }
         }
         return areas;
+    }
+
+    public JsonArray getAdminLineInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
+                                                String typeFilterString, boolean withSimplify, double tolerance,
+                                                Map<Integer, List<Polyline>> polylines, MainController controller) {
+        Statement stmt = null;
+        JsonArray adminLines = new JsonArray();
+
+        try {
+            long t = System.currentTimeMillis();
+            stmt = mAdminConnection.createStatement();
+            ResultSet rs;
+            tolerance = GISUtils.degToMeter(tolerance);
+
+            String geom = "AsText(geom)";
+            if (withSimplify) {
+                geom = String.format("AsText(Simplify(geom, %f))", tolerance);
+            }
+            System.out.println(withSimplify + " " + tolerance + " " + typeFilterString);
+
+            if (typeFilterString != null) {
+                rs = stmt.executeQuery(String.format("SELECT osmId, adminLevel, %s FROM adminLineTable WHERE ROWID IN (SELECT rowid FROM idx_adminLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND adminLevel IN %s", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, typeFilterString));
+            } else {
+                rs = stmt.executeQuery(String.format("SELECT osmId, adminLevel, %s FROM adminLineTable WHERE ROWID IN (SELECT rowid FROM idx_adminLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f))", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
+            }
+            int count = 0;
+            while (rs.next()) {
+                JsonObject adminLine = new JsonObject();
+                adminLine.put("osmId", rs.getInt(1));
+                adminLine.put("adminLevel", rs.getInt(2));
+                adminLines.add(adminLine);
+                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(3)));
+                OSMStyle.amendAdminLine(adminLine, polyline, controller.getZoom());
+                polylines.get(-1).add(polyline);
+                count++;
+            }
+
+            System.out.println("getAdminLineInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return adminLines;
     }
 
     private JsonArray createCoordsFromLineString(String lineString) {
