@@ -209,6 +209,7 @@ public class MainController implements Initializable {
         polylines.put(0, new ArrayList<>());
         polylines.put(1, new ArrayList<>());
         polylines.put(2, new ArrayList<>());
+        polylines.put(3, new ArrayList<>());
 
         mainPane.getChildren().clear();
         mFetchBBox = getVisibleBBoxDegWithMargin();
@@ -216,13 +217,16 @@ public class MainController implements Initializable {
         if (mMapZoom > 12) {
             JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
                     mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
-
-            JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
         }
 
         JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
                 mFetchBBox.get(2), mFetchBBox.get(3), getStreetTypeListForZoom(), polylines, this);
+
+        if (mMapZoom > 12) {
+            // railway rails are above ways if not bridge anyway
+            JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
+                    mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+        }
 
         JsonArray adminLines = DatabaseController.getInstance().getAdminLineInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
                 mFetchBBox.get(2), mFetchBBox.get(3), OSMUtils.ADMIN_LEVEL_SET, mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
@@ -231,6 +235,7 @@ public class MainController implements Initializable {
         mainPane.getChildren().addAll(polylines.get(0));
         mainPane.getChildren().addAll(polylines.get(1));
         mainPane.getChildren().addAll(polylines.get(2));
+        mainPane.getChildren().addAll(polylines.get(3));
 
         System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
     }

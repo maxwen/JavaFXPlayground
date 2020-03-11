@@ -164,12 +164,14 @@ public class DatabaseController {
                 ways.add(way);
                 Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(10)));
                 OSMStyle.amendWay(way, polyline, controller.getZoom());
+                // ways that are tunnels are drawn specific but must still be on same level as any other way
+                // cause we want to seem them
                 if (layer < 0 || isTunnel == 1) {
-                    polylines.get(0).add(polyline);
-                } else if (isBridge == 1) {
                     polylines.get(2).add(polyline);
+                } else if (isBridge == 1) {
+                    polylines.get(3).add(polyline);
                 } else {
-                    polylines.get(1).add(polyline);
+                    polylines.get(2).add(polyline);
                 }
 
                 count++;
@@ -223,7 +225,8 @@ public class DatabaseController {
                 JsonObject area = new JsonObject();
                 area.put("osmId", rs.getInt(1));
                 area.put("areaType", rs.getInt(2));
-                area.put("layer", rs.getInt(4));
+                int layer = rs.getInt(4);
+                area.put("layer", layer);
                 String tags = rs.getString(3);
                 try {
                     if (tags != null && tags.length() != 0) {
@@ -239,7 +242,11 @@ public class DatabaseController {
                     JsonArray innerCoords = (JsonArray) coords.get(j);
                     Polyline polyline = controller.displayCoords(innerCoords);
                     OSMStyle.amendArea(area, polyline, controller.getZoom());
-                    polylines.get(1).add(polyline);
+                    if (layer < 0) {
+                        polylines.get(-1).add(polyline);
+                    } else {
+                        polylines.get(0).add(polyline);
+                    }
                 }
 
                 count++;
@@ -287,29 +294,46 @@ public class DatabaseController {
             while (rs.next()) {
                 JsonObject area = new JsonObject();
                 area.put("osmId", rs.getInt(1));
-                area.put("areaType", rs.getInt(2));
+                int areaType = rs.getInt(2);
+                area.put("areaType", areaType);
                 int layer = rs.getInt(4);
                 area.put("layer", layer);
-                String tags = rs.getString(3);
+                JsonObject tags = null;
+                String tagsStr = rs.getString(3);
                 try {
-                    if (tags != null && tags.length() != 0) {
-                        area.put("tags", Jsoner.deserialize(tags));
+                    if (tagsStr != null && tagsStr.length() != 0) {
+                        tags = (JsonObject) Jsoner.deserialize(tagsStr);
+                        area.put("tags", tags);
                     }
                 } catch (JsonException e) {
                     System.out.println(e.getMessage());
                 }
                 areas.add(area);
-                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(5)));
-                OSMStyle.amendLineArea(area, polyline, controller.getZoom());
-                if (layer < 0) {
-                    polylines.get(0).add(polyline);
-                } else if (layer > 0) {
-                    polylines.get(2).add(polyline);
-                } else {
-                    polylines.get(1).add(polyline);
-                }
-
                 count++;
+
+                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(5)));
+                if (areaType == OSMUtils.AREA_TYPE_RAILWAY && tags != null) {
+                    Object isRailway = tags.get("railway");
+                    Object isTunnel =  tags.get("tunnel");
+                    Object isBridge = tags.get("bridge");
+                    if (isRailway != null && isRailway.equals("rail")) {
+                        if (isBridge != null && isBridge.equals("yes")) {
+                            polylines.get(3).add(polyline);
+                        } else if (isTunnel != null && isTunnel.equals("yes")) {
+                            // TODO like ways - do we want to show railway tunnels? if yes change to 2 here
+                            polylines.get(-1).add(polyline);
+                        } else {
+                            polylines.get(2).add(polyline);
+                        }
+                        OSMStyle.amendRailway(area, polyline, controller.getZoom());
+                        continue;
+                    } else {
+                        polylines.get(0).add(polyline);
+                    }
+                } else {
+                    polylines.get(0).add(polyline);
+                }
+                OSMStyle.amendLineArea(area, polyline, controller.getZoom());
             }
 
             System.out.println("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
@@ -358,7 +382,7 @@ public class DatabaseController {
                 adminLines.add(adminLine);
                 Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(3)));
                 OSMStyle.amendAdminLine(adminLine, polyline, controller.getZoom());
-                polylines.get(-1).add(polyline);
+                polylines.get(1).add(polyline);
                 count++;
             }
 
