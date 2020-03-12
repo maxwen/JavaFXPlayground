@@ -1,14 +1,15 @@
 package sample;
 
 import com.github.cliftonlabs.json_simple.JsonObject;
+import javafx.scene.effect.BlurType;
+import javafx.scene.effect.DropShadow;
+import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.ImagePattern;
 import javafx.scene.paint.Paint;
-import javafx.scene.shape.Polyline;
-import javafx.scene.shape.StrokeLineCap;
-import javafx.scene.shape.StrokeLineJoin;
-import javafx.scene.shape.StrokeType;
+import javafx.scene.shape.*;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
 public class OSMStyle {
 
     private static HashMap<Integer, Color> mStreetColors;
-    private static HashMap<String, Color> mAreaColors;
+    private static HashMap<String, Paint> mAreaColors;
 
     private static void initStreetColors() {
         mStreetColors = new HashMap<>();
@@ -51,6 +52,7 @@ public class OSMStyle {
         mAreaColors.put("warningBackgroundColor",  Color.rgb(255, 0, 0, 0.8d));
         mAreaColors.put("naturalColor",  Color.rgb(0x8d, 0xc5, 0x6c));
         mAreaColors.put("forestAreaColor",  Color.rgb(0xad, 0xd1, 0x9e));
+        mAreaColors.put("forestAreaPattern",  new ImagePattern(new Image("/images/forest.png"),0, 0, 24, 24, false));
         mAreaColors.put("woodAreaColor",  Color.rgb(0xae, 0xd1, 0xa0));
         mAreaColors.put("tourismUndefinedColor", Color.RED);
         mAreaColors.put("tourismCampingAreaColor",  Color.rgb(0xcc, 0xff, 0x99));
@@ -92,7 +94,7 @@ public class OSMStyle {
     }
 
 
-    public static Paint getAreaColor(JsonObject area) {
+    public static Paint getAreaColor(JsonObject area, int zoom) {
         if (mAreaColors == null) {
             initStreetColors();
         }
@@ -106,16 +108,19 @@ public class OSMStyle {
         if (areaType == OSMUtils.AREA_TYPE_RAILWAY) {
             return mAreaColors.get("railwayAreaColor");
         }
+        if (areaType == OSMUtils.AREA_TYPE_AEROWAY) {
+            return mAreaColors.get("industrial");
+        }
         if (areaType == OSMUtils.AREA_TYPE_NATURAL) {
-            return getNaturalAreaColor(area);
+            return getNaturalAreaColor(area, zoom);
         }
         if (areaType == OSMUtils.AREA_TYPE_LANDUSE) {
-            return getLanduseAreaColor(area);
+            return getLanduseAreaColor(area, zoom);
         }
         return Color.LIGHTGREEN;
     }
 
-    public static Paint getNaturalAreaColor(JsonObject area) {
+    public static Paint getNaturalAreaColor(JsonObject area, int zoom) {
         JsonObject tags = (JsonObject) area.get("tags");
         if (tags == null) {
             return mAreaColors.get("naturalColor");
@@ -148,7 +153,7 @@ public class OSMStyle {
         return mAreaColors.get("naturalColor");
     }
 
-    public static Paint getLanduseAreaColor(JsonObject area) {
+    public static Paint getLanduseAreaColor(JsonObject area, int zoom) {
         JsonObject tags = (JsonObject) area.get("tags");
         if (tags == null || tags.get("landuse") == null) {
             return mAreaColors.get("landuseColor");
@@ -169,7 +174,11 @@ public class OSMStyle {
         if (landuse.equals("industrial"))
             return mAreaColors.get("industrialColor");
         if (landuse.equals("forest"))
-            return mAreaColors.get("forestAreaColor");
+            if (zoom >= 15) {
+                return mAreaColors.get("forestAreaPattern");
+            } else {
+                return mAreaColors.get("forestAreaColor");
+            }
         if (landuse.equals("cemetery"))
             return mAreaColors.get("grassColor");
         if (landuse.equals("village_green") || landuse.equals("recreation_ground"))
@@ -281,43 +290,51 @@ public class OSMStyle {
         return 1;
     }
 
-    public static void amendWay(JsonObject way, Polyline wayLine, int zoom) {
+    public static void amendWay(JsonObject way, Shape wayLine, int zoom, boolean casing) {
         int streetTypeId = (int) way.get("streetTypeId");
         int streetTypeInfo = (int) way.get("streetInfo");
         int isTunnel = (streetTypeInfo & 255) >> 7;
         int isBridge = (streetTypeInfo & 511) >> 8;
         int width = getStreetWidth(streetTypeId, zoom);
-        if (isBridge == 1) {
-            wayLine.setStroke(getStreetColor(streetTypeId).brighter());
-        } else if (isTunnel == 1) {
-            wayLine.setStroke(getStreetColor(streetTypeId).darker());
-        } else {
-            wayLine.setStroke(getStreetColor(streetTypeId));
+        if (!casing) {
+            if (isBridge == 1) {
+                wayLine.setStroke(getStreetColor(streetTypeId).brighter());
+            } else if (isTunnel == 1) {
+                wayLine.setStroke(getStreetColor(streetTypeId).darker());
+            } else {
+                wayLine.setStroke(getStreetColor(streetTypeId));
+            }
         }
 
         wayLine.setStrokeWidth(width);
         wayLine.setSmooth(true);
         wayLine.setStrokeLineCap(StrokeLineCap.ROUND);
         wayLine.setStrokeLineJoin(StrokeLineJoin.ROUND);
+        if (casing) {
+            DropShadow borderEffect = new DropShadow(
+                    BlurType.ONE_PASS_BOX, Color.LIGHTGRAY, 1.5, 1.5, 0, 0
+            );
+            wayLine.setEffect(borderEffect);
+        }
     }
 
-    public static void amendArea(JsonObject area, Polyline areaLine, int zoom) {
-        areaLine.setFill(getAreaColor(area));
+    public static void amendArea(JsonObject area, Shape areaLine, int zoom) {
+        areaLine.setFill(getAreaColor(area, zoom));
         areaLine.setStroke(Color.LIGHTGRAY);
     }
 
-    public static void amendLineArea(JsonObject area, Polyline areaLine, int zoom) {
-        areaLine.setStroke(getAreaColor(area));
+    public static void amendLineArea(JsonObject area, Shape areaLine, int zoom) {
+        areaLine.setStroke(getAreaColor(area, zoom));
     }
 
-    public static void amendRailway(JsonObject area, Polyline areaLine, int zoom) {
+    public static void amendRailway(JsonObject area, Shape areaLine, int zoom) {
         areaLine.setStroke(mAreaColors.get("railwayColor"));
         double width = getRailwayPenWidthForZoom(zoom);
         areaLine.getStrokeDashArray().addAll(2 * width);
         areaLine.setStrokeWidth(width);
     }
 
-    public static void amendAdminLine(JsonObject adminLine, Polyline areaLine, int zoom) {
+    public static void amendAdminLine(JsonObject adminLine, Shape areaLine, int zoom) {
         int adminLevel = (int) adminLine.get("adminLevel");
         double width = getAdminLinePenWidthForZoom(zoom);
         areaLine.getStrokeDashArray().addAll(2 * width);

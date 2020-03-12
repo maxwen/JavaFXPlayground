@@ -11,7 +11,9 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Polyline;
+import javafx.scene.shape.Shape;
 
 import java.net.URL;
 import java.util.*;
@@ -150,7 +152,7 @@ public class MainController implements Initializable {
                     OSMUtils.STREET_TYPE_TERTIARY,
                     OSMUtils.STREET_TYPE_TERTIARY_LINK);
             return typeFilterList;
-        } else if (mMapZoom <= 16) {
+        } else if (mMapZoom <= 15) {
             List<Integer> typeFilterList = new ArrayList<>();
             Collections.addAll(typeFilterList, OSMUtils.STREET_TYPE_MOTORWAY,
                     OSMUtils.STREET_TYPE_MOTORWAY_LINK,
@@ -204,7 +206,7 @@ public class MainController implements Initializable {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
         System.out.println("load " + mMapZoom);
-        Map<Integer, List<Polyline>> polylines = new HashMap<>();
+        Map<Integer, List<Shape>> polylines = new HashMap<>();
         polylines.put(-1, new ArrayList<>());
         polylines.put(0, new ArrayList<>());
         polylines.put(1, new ArrayList<>());
@@ -265,7 +267,7 @@ public class MainController implements Initializable {
         return GISUtils.lat2pixel(mMapZoom, lat);
     }
 
-    public Polyline displayCoords(JsonArray coords) {
+    public Polyline displayCoordsPolyline(JsonArray coords) {
         Polyline polyline = new Polyline();
         Double[] points = new Double[coords.size() * 2];
         int j = 0;
@@ -286,6 +288,37 @@ public class MainController implements Initializable {
         polyline.setTranslateY(-mMapZeroY);
         return polyline;
     }
+
+    public Polyline clonePolyline(Polyline p) {
+        Polyline polyline = new Polyline();
+        polyline.getPoints().addAll(p.getPoints());
+        polyline.setTranslateX(-mMapZeroX);
+        polyline.setTranslateY(-mMapZeroY);
+        return polyline;
+    }
+
+    public Polygon displayCoordsPolygon(JsonArray coords) {
+        Polygon polygon = new Polygon();
+        Double[] points = new Double[coords.size() * 2];
+        int j = 0;
+        for (int i = 0; i < coords.size(); i++) {
+            JsonArray coord = (JsonArray) coords.get(i);
+            double lon = coord.getDouble(0);
+            double lat = coord.getDouble(1);
+
+            Double posX = getPixelXPosForLocationDeg(lon);
+            Double posY = getPixelYPosForLocationDeg(lat);
+
+            points[j] = posX;
+            points[j + 1] = posY;
+            j += 2;
+        }
+        polygon.getPoints().addAll(points);
+        polygon.setTranslateX(-mMapZeroX);
+        polygon.setTranslateY(-mMapZeroY);
+        return polygon;
+    }
+
 
     private void calcMapCenterPos() {
         mCenterPosX = getPixelXPosForLocationDeg(mCenterLon);

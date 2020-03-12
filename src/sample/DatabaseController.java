@@ -5,7 +5,9 @@ import com.github.cliftonlabs.json_simple.JsonException;
 import com.github.cliftonlabs.json_simple.JsonObject;
 import com.github.cliftonlabs.json_simple.Jsoner;
 import javafx.scene.chart.XYChart;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Polyline;
+import javafx.scene.shape.Shape;
 import org.sqlite.SQLiteConfig;
 
 import java.sql.*;
@@ -99,7 +101,7 @@ public class DatabaseController {
     }
 
     public JsonArray getWaysInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
-                                           List<Integer> typeFilterList, Map<Integer, List<Polyline>> polylines,
+                                           List<Integer> typeFilterList, Map<Integer, List<Shape>> polylines,
                                            MainController controller) {
         Statement stmt = null;
         JsonArray ways = new JsonArray();
@@ -162,8 +164,17 @@ public class DatabaseController {
                 }
 
                 ways.add(way);
-                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(10)));
-                OSMStyle.amendWay(way, polyline, controller.getZoom());
+
+                boolean showCasing = controller.getZoom() >= 17;
+                Polyline polylineCasing = null;
+                Polyline polyline = controller.displayCoordsPolyline(createCoordsFromLineString(rs.getString(10)));
+                if (showCasing) {
+                    polylineCasing = controller.clonePolyline(polyline);
+                    OSMStyle.amendWay(way, polylineCasing, controller.getZoom(), true);
+                    OSMStyle.amendWay(way, polyline, controller.getZoom(), false);
+                } else {
+                    OSMStyle.amendWay(way, polyline, controller.getZoom(), false);
+                }
                 // ways that are tunnels are drawn specific but must still be on same level as any other way
                 // cause we want to seem them
                 if (layer < 0 || isTunnel == 1) {
@@ -172,6 +183,9 @@ public class DatabaseController {
                     polylines.get(3).add(polyline);
                 } else {
                     polylines.get(2).add(polyline);
+                }
+                if (showCasing) {
+                    polylines.get(-1).add(polylineCasing);
                 }
 
                 count++;
@@ -193,7 +207,7 @@ public class DatabaseController {
 
     public JsonArray getAreasInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
                                             List<Integer> typeFilterList, boolean withSimplify, double tolerance,
-                                            Map<Integer, List<Polyline>> polylines, MainController controller) {
+                                            Map<Integer, List<Shape>> polylines, MainController controller) {
         Statement stmt = null;
         JsonArray areas = new JsonArray();
 
@@ -240,12 +254,12 @@ public class DatabaseController {
                 JsonArray coords = createCoordsFromPolygonString(rs.getString(5));
                 for (int j = 0; j < coords.size(); j++) {
                     JsonArray innerCoords = (JsonArray) coords.get(j);
-                    Polyline polyline = controller.displayCoords(innerCoords);
-                    OSMStyle.amendArea(area, polyline, controller.getZoom());
+                    Polygon polygon = controller.displayCoordsPolygon(innerCoords);
+                    OSMStyle.amendArea(area, polygon, controller.getZoom());
                     if (layer < 0) {
-                        polylines.get(-1).add(polyline);
+                        polylines.get(-1).add(polygon);
                     } else {
-                        polylines.get(0).add(polyline);
+                        polylines.get(0).add(polygon);
                     }
                 }
 
@@ -269,7 +283,7 @@ public class DatabaseController {
 
     public JsonArray getLineAreasInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
                                                 List<Integer> typeFilterList, boolean withSimplify, double tolerance,
-                                                Map<Integer, List<Polyline>> polylines, MainController controller) {
+                                                Map<Integer, List<Shape>> polylines, MainController controller) {
         Statement stmt = null;
         JsonArray areas = new JsonArray();
 
@@ -311,7 +325,7 @@ public class DatabaseController {
                 areas.add(area);
                 count++;
 
-                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(5)));
+                Polyline polyline = controller.displayCoordsPolyline(createCoordsFromLineString(rs.getString(5)));
                 if (areaType == OSMUtils.AREA_TYPE_RAILWAY && tags != null) {
                     Object isRailway = tags.get("railway");
                     Object isTunnel =  tags.get("tunnel");
@@ -353,7 +367,7 @@ public class DatabaseController {
 
     public JsonArray getAdminLineInBboxWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
                                                 String typeFilterString, boolean withSimplify, double tolerance,
-                                                Map<Integer, List<Polyline>> polylines, MainController controller) {
+                                                Map<Integer, List<Shape>> polylines, MainController controller) {
         Statement stmt = null;
         JsonArray adminLines = new JsonArray();
 
@@ -380,7 +394,7 @@ public class DatabaseController {
                 adminLine.put("osmId", rs.getInt(1));
                 adminLine.put("adminLevel", rs.getInt(2));
                 adminLines.add(adminLine);
-                Polyline polyline = controller.displayCoords(createCoordsFromLineString(rs.getString(3)));
+                Polyline polyline = controller.displayCoordsPolyline(createCoordsFromLineString(rs.getString(3)));
                 OSMStyle.amendAdminLine(adminLine, polyline, controller.getZoom());
                 polylines.get(1).add(polyline);
                 count++;
