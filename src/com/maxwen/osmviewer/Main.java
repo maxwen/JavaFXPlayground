@@ -1,4 +1,4 @@
-package sample;
+package com.maxwen.osmviewer;
 
 import javafx.application.Application;
 import javafx.fxml.FXML;

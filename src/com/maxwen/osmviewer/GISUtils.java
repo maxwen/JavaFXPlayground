@@ -1,4 +1,4 @@
-package sample;
+package com.maxwen.osmviewer;
 
 public class GISUtils {
     private static final int TILESIZE = 256;

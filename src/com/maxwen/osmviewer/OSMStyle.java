@@ -1,4 +1,4 @@
-package sample;
+package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonObject;
 import javafx.scene.effect.BlurType;
@@ -9,10 +9,7 @@ import javafx.scene.paint.ImagePattern;
 import javafx.scene.paint.Paint;
 import javafx.scene.shape.*;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 public class OSMStyle {
 
@@ -308,7 +305,11 @@ public class OSMStyle {
 
         wayLine.setStrokeWidth(width);
         wayLine.setSmooth(true);
-        wayLine.setStrokeLineCap(StrokeLineCap.ROUND);
+        if (isBridge == 1 || isTunnel == 1) {
+            wayLine.setStrokeLineCap(StrokeLineCap.SQUARE);
+        } else {
+            wayLine.setStrokeLineCap(StrokeLineCap.ROUND);
+        }
         wayLine.setStrokeLineJoin(StrokeLineJoin.ROUND);
         if (casing) {
             DropShadow borderEffect = new DropShadow(

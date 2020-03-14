@@ -1,4 +1,4 @@
-package sample;
+package com.maxwen.osmviewer;
 
 import java.util.HashSet;
 import java.util.Set;
