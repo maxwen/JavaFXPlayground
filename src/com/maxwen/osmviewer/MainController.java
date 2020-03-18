@@ -1,23 +1,33 @@
 package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
+import com.github.cliftonlabs.json_simple.JsonObject;
 import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
-import javafx.geometry.Point2D;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
+import javafx.geometry.*;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.Pane;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Polyline;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
+import javafx.scene.transform.NonInvertibleTransformException;
+import javafx.scene.transform.Rotate;
+import javafx.stage.Popup;
+import javafx.stage.Stage;
 
 import java.net.URL;
 import java.util.*;
+import java.util.List;
 
 public class MainController implements Initializable {
+    public static final int ROTATE_X_VALUE = 50;
+    public static final int PREFETCH_MARGIN_PIXEL = 200;
     @FXML
     Button quitButton;
     @FXML
@@ -36,6 +46,12 @@ public class MainController implements Initializable {
     Pane mainPane;
     @FXML
     Label zoomLabel;
+    @FXML
+    Label posLabel;
+    @FXML
+    BorderPane borderPane;
+    @FXML
+    HBox buttons;
 
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
@@ -48,13 +64,31 @@ public class MainController implements Initializable {
     private double mCenterPosY;
     private boolean mMouseMoving;
     private Point2D mMovePoint;
-    private List<Double> mFetchBBox;
     private long mLastMoveHandled;
+    private Point2D mMapPos;
+    private Popup mContextPopup;
+    private Stage mPrimaryStage;
+    private boolean mShow3D;
+    private Scene mScene;
+    private boolean mHeightUpdated;
+    private BoundingBox mFetchBBox;
+    private BoundingBox mVisibleBBox;
+    private Rotate mRotate;
+    private Map<Integer, List<Shape>> mPolylines;
 
     EventHandler<MouseEvent> mouseHandler = new EventHandler<MouseEvent>() {
         @Override
         public void handle(MouseEvent mouseEvent) {
+            if (mContextPopup != null) {
+                mContextPopup.hide();
+                mContextPopup = null;
+            }
+
             if (mouseEvent.getEventType() == MouseEvent.MOUSE_PRESSED) {
+                // getX and getY will be transformed pos
+                Point2D mapPos = new Point2D(mouseEvent.getX(), mouseEvent.getY());
+                Point2D coordPos = getCoordOfPos(mapPos);
+                posLabel.setText(String.format("%.6f:%.6f", coordPos.getX(), coordPos.getY()));
             } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_RELEASED) {
                 mMouseMoving = false;
                 mMovePoint = null;
@@ -63,17 +97,17 @@ public class MainController implements Initializable {
                     return;
                 }
                 if (!mMouseMoving) {
-                    mMovePoint = new Point2D(mouseEvent.getSceneX(), mouseEvent.getSceneY());
+                    mMovePoint = new Point2D(mouseEvent.getX(), mouseEvent.getY());
                     mMouseMoving = true;
                     mLastMoveHandled = 0;
                 } else {
                     if (mMovePoint != null) {
-                        int diffX = (int) (mMovePoint.getX() - mouseEvent.getSceneX());
-                        int diffY = (int) (mMovePoint.getY() - mouseEvent.getSceneY());
+                        int diffX = (int) (mMovePoint.getX() - mouseEvent.getX());
+                        int diffY = (int) (mMovePoint.getY() - mouseEvent.getY());
 
                         moveMap(diffX, diffY);
                         mLastMoveHandled = System.currentTimeMillis();
-                        mMovePoint = new Point2D(mouseEvent.getSceneX(), mouseEvent.getSceneY());
+                        mMovePoint = new Point2D(mouseEvent.getX(), mouseEvent.getY());
                     }
                 }
             }
@@ -83,6 +117,12 @@ public class MainController implements Initializable {
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         System.out.println("initialize");
+        mPolylines = new LinkedHashMap<>();
+        mPolylines.put(-1, new ArrayList<>());
+        mPolylines.put(0, new ArrayList<>());
+        mPolylines.put(1, new ArrayList<>());
+        mPolylines.put(2, new ArrayList<>());
+        mPolylines.put(3, new ArrayList<>());
 
         calcMapCenterPos();
 
@@ -106,27 +146,96 @@ public class MainController implements Initializable {
                 mMapZoom = zoom;
                 zoomLabel.setText(String.valueOf(mMapZoom));
                 calcMapCenterPos();
+                if (mMapZoom < 16) {
+                    mShow3D = false;
+                    mainPane.getTransforms().remove(mRotate);
+                }
                 loadWays();
             }
         });
         stepLeftButton.setOnAction(e -> {
-            moveMap(-100, 0);
+            Point2D p = new Point2D(-100, 0);
+            moveMap(p.getX(), p.getY());
         });
         stepRightButton.setOnAction(e -> {
-            moveMap(100, 0);
+            Point2D p = new Point2D(100, 0);
+            moveMap(p.getX(), p.getY());
         });
         stepUpButton.setOnAction(e -> {
-            moveMap(0, -100);
+            Point2D p = new Point2D(0, -100);
+            moveMap(p.getX(), p.getY());
         });
         stepDownButton.setOnAction(e -> {
-            moveMap(0, 100);
+            Point2D p = new Point2D(0, 100);
+            moveMap(p.getX(), p.getY());
         });
         zoomLabel.setText(String.valueOf(mMapZoom));
-        //mainPane.setOnMousePressed(mouseHandler);
+        mainPane.setOnMousePressed(mouseHandler);
         mainPane.setOnMouseReleased(mouseHandler);
         mainPane.setOnMouseDragged(mouseHandler);
+
+        ContextMenu contextMenu = new ContextMenu();
+        MenuItem menuItem = new MenuItem(" Mouse pos ");
+        menuItem.setOnAction(ev -> {
+            Point2D coordPos = getCoordOfPos(mMapPos);
+            List<Double> bbox = createBBoxAroundPoint(coordPos.getX(), coordPos.getY(), 0.0);
+            JsonArray adminAreas = DatabaseController.getInstance().getAdminAreasOnPointWithGeom(coordPos.getX(), coordPos.getY(),
+                    bbox.get(0), bbox.get(1), bbox.get(2), bbox.get(3), OSMUtils.ADMIN_LEVEL_SET, this);
+            StringBuilder s = new StringBuilder();
+            for (int i = 0; i < adminAreas.size(); i++) {
+                JsonObject area = (JsonObject) adminAreas.get(i);
+                JsonObject tags = (JsonObject) area.get("tags");
+                if (tags != null && tags.containsKey("name")) {
+                    s.append(tags.get("name") + "\n");
+                }
+            }
+            mContextPopup = createPopup(s.toString());
+            mContextPopup.show(mPrimaryStage);
+        });
+        contextMenu.getItems().add(menuItem);
+        menuItem = new MenuItem(" Toggle 3D ");
+        menuItem.setOnAction(ev -> {
+            if (mMapZoom >= 16) {
+                if (mShow3D) {
+                    mShow3D = false;
+                    mainPane.getTransforms().remove(mRotate);
+                    loadWays();
+                } else {
+                    mShow3D = true;
+                    mainPane.getTransforms().add(mRotate);
+                    loadWays();
+                }
+            }
+        });
+        contextMenu.getItems().add(menuItem);
+        mainPane.setOnContextMenuRequested((ev) -> {
+            mMapPos = new Point2D(ev.getX(), ev.getY());
+            contextMenu.show(mainPane, ev.getScreenX(), ev.getScreenY());
+        });
+
+        mRotate = new Rotate(-ROTATE_X_VALUE, Rotate.X_AXIS);
+
+        borderPane.setTop(new TextField("Top"));
+        borderPane.setTop(buttons);
     }
 
+    protected void setStage(Stage primaryStage) {
+        mPrimaryStage = primaryStage;
+    }
+
+    protected void setScene(Scene scene) {
+        mScene = scene;
+    }
+
+    private Popup createPopup(String text) {
+        Label label = new Label(text);
+        Popup popup = new Popup();
+        label.setStyle(" -fx-background-color: white;");
+        popup.getContent().add(label);
+        label.setMinWidth(250);
+        label.setMinHeight(200);
+        return popup;
+    }
 
     private List<Integer> getStreetTypeListForZoom() {
         if (mMapZoom <= 12) {
@@ -204,50 +313,65 @@ public class MainController implements Initializable {
     public void loadWays() {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
-        System.out.println("load " + mMapZoom);
-        Map<Integer, List<Shape>> polylines = new HashMap<>();
-        polylines.put(-1, new ArrayList<>());
-        polylines.put(0, new ArrayList<>());
-        polylines.put(1, new ArrayList<>());
-        polylines.put(2, new ArrayList<>());
-        polylines.put(3, new ArrayList<>());
-
-        mainPane.getChildren().clear();
-        mFetchBBox = getVisibleBBoxDegWithMargin();
-
-        if (mMapZoom > 12) {
-            JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                    mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+        //System.out.println("load " + mMapZoom);
+        for (List<Shape> polyList : mPolylines.values()) {
+            polyList.clear();
         }
 
-        JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), getStreetTypeListForZoom(), polylines, this);
+        System.out.println(mCenterPosX + " : " + mCenterPosY);
+        System.out.println(mMapZeroX + " : " + mMapZeroY);
+
+        mainPane.getChildren().clear();
+        mVisibleBBox = getVisibleBBox();
+        System.out.println(mVisibleBBox);
+
+        mFetchBBox = getVisibleBBoxWithMargin(mVisibleBBox);
+        System.out.println(mFetchBBox);
+
+        List<Double> bbox = getBBoxInDeg(mFetchBBox);
+        System.out.println(bbox);
+
+        if (mMapZoom > 12) {
+            JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(bbox.get(0), bbox.get(1),
+                    bbox.get(2), bbox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, mPolylines, this);
+        }
+
+        JsonArray ways = DatabaseController.getInstance().getWaysInBboxWithGeom(bbox.get(0), bbox.get(1),
+                bbox.get(2), bbox.get(3), getStreetTypeListForZoom(), mPolylines, this);
 
         if (mMapZoom > 12) {
             // railway rails are above ways if not bridge anyway
-            JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                    mFetchBBox.get(2), mFetchBBox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+            JsonArray lineAreas = DatabaseController.getInstance().getLineAreasInBboxWithGeom(bbox.get(0), bbox.get(1),
+                    bbox.get(2), bbox.get(3), getAreaTypeListForZoom(), mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, mPolylines, this);
         }
 
-        JsonArray adminLines = DatabaseController.getInstance().getAdminLineInBboxWithGeom(mFetchBBox.get(0), mFetchBBox.get(1),
-                mFetchBBox.get(2), mFetchBBox.get(3), OSMUtils.ADMIN_LEVEL_SET, mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, polylines, this);
+        JsonArray adminLines = DatabaseController.getInstance().getAdminLineInBboxWithGeom(bbox.get(0), bbox.get(1),
+                bbox.get(2), bbox.get(3), OSMUtils.ADMIN_LEVEL_SET, mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, mPolylines, this);
 
-        mainPane.getChildren().addAll(polylines.get(-1));
-        mainPane.getChildren().addAll(polylines.get(0));
-        mainPane.getChildren().addAll(polylines.get(1));
-        mainPane.getChildren().addAll(polylines.get(2));
-        mainPane.getChildren().addAll(polylines.get(3));
+        for (List<Shape> polyList : mPolylines.values()) {
+            mainPane.getChildren().addAll(polyList);
+        }
 
-        System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
+        //System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
+    }
+
+    private void drawShapes() {
+        calcMapZeroPos();
+        mainPane.getChildren().clear();
+
+        for (List<Shape> polyList : mPolylines.values()) {
+            for (Shape s : polyList) {
+                s.setTranslateX(-mMapZeroX);
+                s.setTranslateY(-mMapZeroY);
+            }
+        }
+        for (List<Shape> polyList : mPolylines.values()) {
+            mainPane.getChildren().addAll(polyList);
+        }
     }
 
     private double getPrefetchBoxMargin() {
-        if (mMapZoom < 14) {
-            return 0.1;
-        } else if (mMapZoom < 17) {
-            return 0.02;
-        }
-        return 0.005;
+        return PREFETCH_MARGIN_PIXEL;
     }
 
     private Double getPixelXPosForLocationDeg(double lon) {
@@ -325,6 +449,11 @@ public class MainController implements Initializable {
     }
 
     private void calcMapZeroPos() {
+        if (!mHeightUpdated) {
+            mRotate.setPivotY(mainPane.getHeight());
+            mHeightUpdated = true;
+        }
+
         mMapZeroX = mCenterPosX - mainPane.getWidth() / 2;
         mMapZeroY = mCenterPosY - mainPane.getHeight() / 2;
     }
@@ -334,7 +463,13 @@ public class MainController implements Initializable {
         mCenterLat = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, mCenterPosY));
     }
 
-    private void moveMap(int stepX, int stepY) {
+    private Point2D getCoordOfPos(Point2D mousePos) {
+        double lat = GISUtils.pixel2lat(mMapZoom, mMapZeroY + mousePos.getY());
+        double lon = GISUtils.pixel2lon(mMapZoom, mMapZeroX + mousePos.getX());
+        return new Point2D(GISUtils.rad2deg(lon), GISUtils.rad2deg(lat));
+    }
+
+    private void moveMap(double stepX, double stepY) {
         double posX = mCenterPosX - mMapZeroX + stepX;
         double posY = mCenterPosY - mMapZeroY + stepY;
 
@@ -342,45 +477,74 @@ public class MainController implements Initializable {
         mCenterPosY = mMapZeroY + posY;
 
         calcCenterCoord();
-        loadWays();
+
+        BoundingBox bbox = getVisibleBBox();
+        if (!mFetchBBox.contains(bbox)) {
+            loadWays();
+        } else {
+            drawShapes();
+        }
     }
 
-    private List<Double> getVisibleBBoxDegWithMargin() {
-        List<Double> bbox = getVisibleBBoxDeg();
-        double margin = getPrefetchBoxMargin();
-        bbox.set(3, bbox.get(3) + margin);
-        bbox.set(2, bbox.get(2) + margin);
-        bbox.set(1, bbox.get(1) - margin);
-        bbox.set(0, bbox.get(0) - margin);
+    private List<Double> createBBoxAroundPoint(double lon, double lat, double margin) {
+        List<Double> bbox = new ArrayList<>();
+        double latRangeMax = lat + margin;
+        double lonRangeMax = lon + margin * 1.4;
+        double latRangeMin = lat - margin;
+        double lonRangeMin = lon - margin * 1.4;
+        Collections.addAll(bbox, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax);
         return bbox;
     }
 
-    private List<Double> getVisibleBBoxDeg() {
-        double lat1 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, mMapZeroY));
-        double lon1 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, mMapZeroX));
+    private BoundingBox getVisibleBBox() {
+        double deltaY = 0;
+        double deltaX = 0;
+        if (mShow3D) {
+            deltaY = mainPane.getHeight() / Math.cos(ROTATE_X_VALUE);
+            deltaX = deltaY;
+        }
 
-        double lat2 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, mMapZeroY));
-        double lon2 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, mMapZeroX + mainPane.getWidth()));
+        double y1 = mMapZeroY - deltaY;
+        double x1 = mMapZeroX - deltaX;
 
-        double lat3 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, mMapZeroY + mainPane.getHeight()));
-        double lon3 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, mMapZeroX));
+        double y2 = mMapZeroY + deltaY;
+        double x2 = mMapZeroX + mainPane.getWidth() + 2 * deltaX;
 
-        double lat4 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, mMapZeroY + mainPane.getHeight()));
-        double lon4 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, mMapZeroX + mainPane.getWidth()));
+        double y3 = mMapZeroY + mainPane.getHeight();
+        double x3 = mMapZeroX;
 
-        List<Double> lonList = new ArrayList<>();
-        Collections.addAll(lonList, lon1, lon2, lon3, lon4);
+        double y4 = mMapZeroY + mainPane.getHeight();
+        double x4 = mMapZeroX + mainPane.getWidth();
 
-        List<Double> latList = new ArrayList<>();
-        Collections.addAll(latList, lat1, lat2, lat3, lat4);
+        List<Double> xList = new ArrayList<>();
+        Collections.addAll(xList, x1, x2, x3, x4);
 
-        double bboxLon1 = Collections.min(lonList);
-        double bboxLat1 = Collections.min(latList);
-        double bboxLon2 = Collections.max(lonList);
-        double bboxLat2 = Collections.max(latList);
+        List<Double> yList = new ArrayList<>();
+        Collections.addAll(yList, y1, y2, y3, y4);
+
+        double bboxX1 = Collections.min(xList);
+        double bboxY1 = Collections.min(yList);
+        double bboxX2 = Collections.max(xList);
+        double bboxY2 = Collections.max(yList);
+
+        return new BoundingBox(bboxX1, bboxY1, bboxX2 - bboxX1, bboxY2 - bboxY1);
+    }
+
+    private BoundingBox getVisibleBBoxWithMargin(BoundingBox bbox) {
+        double margin = getPrefetchBoxMargin();
+        return new BoundingBox(bbox.getMinX() - margin, bbox.getMinY() - margin,
+                bbox.getWidth() + 2 * margin, bbox.getHeight() + 2 * margin);
+    }
+
+    private List<Double> getBBoxInDeg(BoundingBox bbox) {
+        double lat1 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, bbox.getMinY()));
+        double lon1 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, bbox.getMinX()));
+
+        double lat2 = GISUtils.rad2deg(GISUtils.pixel2lat(mMapZoom, bbox.getMaxY()));
+        double lon2 = GISUtils.rad2deg(GISUtils.pixel2lon(mMapZoom, bbox.getMaxX()));
 
         List<Double> l = new ArrayList<>();
-        Collections.addAll(l, bboxLon1, bboxLat1, bboxLon2, bboxLat2);
+        Collections.addAll(l, lon1, lat1, lon2, lat2);
         return l;
     }
 

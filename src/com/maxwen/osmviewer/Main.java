@@ -4,12 +4,15 @@ import javafx.application.Application;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
+import javafx.scene.PerspectiveCamera;
 import javafx.scene.Scene;
+import javafx.scene.SceneAntialiasing;
 import javafx.scene.control.Button;
 import javafx.stage.Stage;
 
 public class Main extends Application {
     private MainController mController;
+    private Scene mScene;
 
     @FXML
     Button closeMenu;
@@ -19,9 +22,13 @@ public class Main extends Application {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("sample.fxml"));
         Parent root = loader.load();
         mController = loader.getController();
+        mController.setStage(primaryStage);
         primaryStage.setTitle("Hello World");
-        Scene s = new Scene(root, 1280, 800);
-        primaryStage.setScene(s);
+        mScene = new Scene(root, 1280, 800, false, SceneAntialiasing.BALANCED);
+        PerspectiveCamera camera = new PerspectiveCamera();
+        mScene.setCamera(camera);
+        mController.setScene(mScene);
+        primaryStage.setScene(mScene);
         primaryStage.show();
         mController.loadWays();
     }

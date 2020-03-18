@@ -186,7 +186,7 @@ public class DatabaseController {
 
                 count++;
             }
-            System.out.println("getWaysInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //System.out.println("getWaysInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -217,7 +217,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
+            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
             if (typeFilterList != null && typeFilterList.size() != 0) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
             } else {
@@ -262,7 +262,7 @@ public class DatabaseController {
                 count++;
             }
 
-            System.out.println("getAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //System.out.println("getAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -293,7 +293,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
+            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
 
             if (typeFilterList != null && typeFilterList.size() != 0) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaLineTable WHERE ROWID IN (SELECT rowid FROM idx_areaLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
@@ -346,7 +346,7 @@ public class DatabaseController {
                 OSMStyle.amendLineArea(area, polyline, controller.getZoom());
             }
 
-            System.out.println("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //System.out.println("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -377,7 +377,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            System.out.println(withSimplify + " " + tolerance + " " + typeFilterString);
+            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterString);
 
             if (typeFilterString != null) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, adminLevel, %s FROM adminLineTable WHERE ROWID IN (SELECT rowid FROM idx_adminLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND adminLevel IN %s", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, typeFilterString));
@@ -396,7 +396,7 @@ public class DatabaseController {
                 count++;
             }
 
-            System.out.println("getAdminLineInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //System.out.println("getAdminLineInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -409,6 +409,53 @@ public class DatabaseController {
             }
         }
         return adminLines;
+    }
+
+    public JsonArray getAdminAreasOnPointWithGeom(double lon, double lat, double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
+                                                String adminLevelList, MainController controller) {
+        Statement stmt = null;
+        JsonArray adminAreas = new JsonArray();
+        try {
+            long t = System.currentTimeMillis();
+            stmt = mAdminConnection.createStatement();
+            ResultSet rs;
+            if (adminLevelList != null && adminLevelList.length() != 0) {
+                rs = stmt.executeQuery(String.format("SELECT osmId, tags, adminLevel, AsText(geom) FROM adminAreaTable WHERE ROWID IN (SELECT rowid FROM idx_adminAreaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND adminLevel IN %s AND Contains(geom, MakePoint(%f, %f, 4236)) ORDER BY adminLevel", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, adminLevelList, lon, lat));
+            } else {
+                rs = stmt.executeQuery(String.format("SELECT osmId, tags, adminLevel, AsText(geom) FROM adminAreaTable WHERE ROWID IN (SELECT rowid FROM idx_adminAreaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND adminLevel IN %s AND Contains(geom, MakePoint(%f, %f, 4236))", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, lon, lat));
+            }
+            int count = 0;
+            while (rs.next()) {
+                JsonObject area = new JsonObject();
+                area.put("osmId", rs.getInt(1));
+                int adminLevel = rs.getInt(3);
+                area.put("adminLevel", adminLevel);
+                JsonObject tags = null;
+                String tagsStr = rs.getString(2);
+                try {
+                    if (tagsStr != null && tagsStr.length() != 0) {
+                        tags = (JsonObject) Jsoner.deserialize(tagsStr);
+                        area.put("tags", tags);
+                    }
+                } catch (JsonException e) {
+                    System.out.println(e.getMessage());
+                }
+                adminAreas.add(area);
+                count++;
+            }
+
+            //System.out.println("getAdminAreasOnPointWithGeom " + count + " " + (System.currentTimeMillis() - t));
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return adminAreas;
     }
 
     private JsonArray createCoordsFromLineString(String lineString) {

@@ -45,7 +45,6 @@ public class OSMStyle {
         mAreaColors.put("onewayWaysColor",  Color.rgb(0, 0, 255, 0.4d));
         mAreaColors.put("livingStreeColor",  Color.rgb(0, 255, 0, 0.4d));
         mAreaColors.put("waterColor",  Color.rgb(0xaa, 0xd3, 0xdf));
-        mAreaColors.put("adminAreaColor",  Color.rgb(0xac, 0x46, 0xac));
         mAreaColors.put("warningBackgroundColor",  Color.rgb(255, 0, 0, 0.8d));
         mAreaColors.put("naturalColor",  Color.rgb(0x8d, 0xc5, 0x6c));
         mAreaColors.put("forestAreaColor",  Color.rgb(0xad, 0xd1, 0x9e));
@@ -80,7 +79,6 @@ public class OSMStyle {
         mAreaColors.put("rockColor",  Color.rgb(0xc1, 0xbf, 0xbf));
         mAreaColors.put("glacierColor",  Color.rgb(0xaa, 0xd3, 0xdf));
         mAreaColors.put("beachColor",  Color.rgb(0xfc, 0xd6, 0xa4));
-
     }
 
     private static Color getStreetColor(int streetTypeId) {
@@ -106,7 +104,7 @@ public class OSMStyle {
             return mAreaColors.get("railwayAreaColor");
         }
         if (areaType == OSMUtils.AREA_TYPE_AEROWAY) {
-            return mAreaColors.get("industrial");
+            return mAreaColors.get("aerowayAreaColor");
         }
         if (areaType == OSMUtils.AREA_TYPE_NATURAL) {
             return getNaturalAreaColor(area, zoom);
@@ -322,10 +320,12 @@ public class OSMStyle {
     public static void amendArea(JsonObject area, Shape areaLine, int zoom) {
         areaLine.setFill(getAreaColor(area, zoom));
         areaLine.setStroke(Color.LIGHTGRAY);
+        areaLine.setSmooth(true);
     }
 
     public static void amendLineArea(JsonObject area, Shape areaLine, int zoom) {
         areaLine.setStroke(getAreaColor(area, zoom));
+        areaLine.setSmooth(true);
     }
 
     public static void amendRailway(JsonObject area, Shape areaLine, int zoom) {
@@ -333,6 +333,7 @@ public class OSMStyle {
         double width = getRailwayPenWidthForZoom(zoom);
         areaLine.getStrokeDashArray().addAll(2 * width);
         areaLine.setStrokeWidth(width);
+        areaLine.setSmooth(true);
     }
 
     public static void amendAdminLine(JsonObject adminLine, Shape areaLine, int zoom) {
@@ -341,5 +342,6 @@ public class OSMStyle {
         areaLine.getStrokeDashArray().addAll(2 * width);
         areaLine.setStroke(mAreaColors.get("adminAreaColor"));
         areaLine.setStrokeWidth(width);
+        areaLine.setSmooth(true);
     }
 }
