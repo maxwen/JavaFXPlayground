@@ -3,6 +3,7 @@ package com.maxwen.osmviewer;
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
 import javafx.application.Platform;
+import javafx.css.Match;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
@@ -12,10 +13,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Polygon;
-import javafx.scene.shape.Polyline;
-import javafx.scene.shape.Rectangle;
-import javafx.scene.shape.Shape;
+import javafx.scene.shape.*;
 import javafx.scene.transform.NonInvertibleTransformException;
 import javafx.scene.transform.Rotate;
 import javafx.stage.Popup;
@@ -24,10 +22,11 @@ import javafx.stage.Stage;
 import java.net.URL;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class MainController implements Initializable {
     public static final int ROTATE_X_VALUE = 50;
-    public static final int PREFETCH_MARGIN_PIXEL = 200;
+    public static final int PREFETCH_MARGIN_PIXEL = 800;
     @FXML
     Button quitButton;
     @FXML
@@ -75,6 +74,17 @@ public class MainController implements Initializable {
     private BoundingBox mVisibleBBox;
     private Rotate mRotate;
     private Map<Integer, List<Shape>> mPolylines;
+    private Rotate mZRotate;
+    private OSMShape mSelectdShape;
+    private long mSelectdOSMId;
+
+    public static final int TUNNEL_LAYER_LEVEL = -1;
+    public static final int AREA_LAYER_LEVEL = 0;
+    public static final int ADMIN_AREA_LAYER_LEVEL = 1;
+    public static final int BUILDING_AREA_LAYER_LEVEL = 2;
+    public static final int STREET_LAYER_LEVEL = 3;
+    public static final int RAILWAY_LAYER_LEVEL = 4;
+    public static final int BRIDGE_LAYER_LEVEL = 5;
 
     EventHandler<MouseEvent> mouseHandler = new EventHandler<MouseEvent>() {
         @Override
@@ -85,10 +95,20 @@ public class MainController implements Initializable {
             }
 
             if (mouseEvent.getEventType() == MouseEvent.MOUSE_PRESSED) {
+                mSelectdShape = null;
+                mSelectdOSMId = -1;
                 // getX and getY will be transformed pos
                 Point2D mapPos = new Point2D(mouseEvent.getX(), mouseEvent.getY());
                 Point2D coordPos = getCoordOfPos(mapPos);
                 posLabel.setText(String.format("%.6f:%.6f", coordPos.getX(), coordPos.getY()));
+
+                Point2D mapPosNormalized = new Point2D(mapPos.getX() + mMapZeroX, mapPos.getY() + mMapZeroY);
+                mSelectdShape = findShapeAtPoint(mapPosNormalized);
+                if (mSelectdShape != null) {
+                    mSelectdShape.setSelected();
+                    mSelectdOSMId = mSelectdShape.getOSMId();
+                    drawShapes();
+                }
             } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_RELEASED) {
                 mMouseMoving = false;
                 mMovePoint = null;
@@ -113,16 +133,24 @@ public class MainController implements Initializable {
             }
         }
     };
+    private Circle mZeroDot;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         System.out.println("initialize");
+        init();
+    }
+
+    public void init() {
+        System.out.println("initialize");
         mPolylines = new LinkedHashMap<>();
-        mPolylines.put(-1, new ArrayList<>());
-        mPolylines.put(0, new ArrayList<>());
-        mPolylines.put(1, new ArrayList<>());
-        mPolylines.put(2, new ArrayList<>());
-        mPolylines.put(3, new ArrayList<>());
+        mPolylines.put(TUNNEL_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(AREA_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(ADMIN_AREA_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(BUILDING_AREA_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(STREET_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(RAILWAY_LAYER_LEVEL, new ArrayList<>());
+        mPolylines.put(BRIDGE_LAYER_LEVEL, new ArrayList<>());
 
         calcMapCenterPos();
 
@@ -198,12 +226,19 @@ public class MainController implements Initializable {
             if (mMapZoom >= 16) {
                 if (mShow3D) {
                     mShow3D = false;
-                    mainPane.getTransforms().remove(mRotate);
+                    mainPane.getTransforms().clear();
+                    //mainPane.getTransforms().add(mZRotate);
                     loadWays();
+                    System.err.println(mZeroDot.localToScene(mZeroDot.getCenterX(), mZeroDot.getCenterY()));
+
                 } else {
                     mShow3D = true;
+                    mainPane.getTransforms().clear();
                     mainPane.getTransforms().add(mRotate);
+                    //mainPane.getTransforms().add(mZRotate);
                     loadWays();
+                    System.err.println(mZeroDot.localToScene(mZeroDot.getCenterX(), mZeroDot.getCenterY()));
+
                 }
             }
         });
@@ -214,6 +249,7 @@ public class MainController implements Initializable {
         });
 
         mRotate = new Rotate(-ROTATE_X_VALUE, Rotate.X_AXIS);
+        mZRotate = new Rotate();
 
         borderPane.setTop(new TextField("Top"));
         borderPane.setTop(buttons);
@@ -225,6 +261,10 @@ public class MainController implements Initializable {
 
     protected void setScene(Scene scene) {
         mScene = scene;
+    }
+
+    protected void setPane(Pane pane) {
+        mainPane = pane;
     }
 
     private Popup createPopup(String text) {
@@ -348,11 +388,38 @@ public class MainController implements Initializable {
         JsonArray adminLines = DatabaseController.getInstance().getAdminLineInBboxWithGeom(bbox.get(0), bbox.get(1),
                 bbox.get(2), bbox.get(3), OSMUtils.ADMIN_LEVEL_SET, mMapZoom <= 14, mMapZoom <= 14 ? 10.0 : 0.0, mPolylines, this);
 
+        if (mSelectdOSMId != -1) {
+            mSelectdShape = findShapeOfOSMId(mSelectdOSMId);
+            if (mSelectdShape == null) {
+                mSelectdOSMId = -1;
+            } else {
+                mSelectdShape.setSelected();
+            }
+        }
+
         for (List<Shape> polyList : mPolylines.values()) {
             mainPane.getChildren().addAll(polyList);
         }
+        if (mSelectdShape != null) {
+            mainPane.getChildren().add(mSelectdShape.getShape());
+        }
 
         //System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
+        Circle centerDot = new Circle();
+        centerDot.setFill(Color.RED);
+        centerDot.setRadius(10);
+        centerDot.setCenterX(mCenterPosX - mMapZeroX);
+        centerDot.setCenterY(mCenterPosY - mMapZeroY);
+
+        mainPane.getChildren().add(centerDot);
+
+        mZeroDot = new Circle();
+        mZeroDot.setFill(Color.BLUE);
+        mZeroDot.setRadius(10);
+        mZeroDot.setCenterX(0);
+        mZeroDot.setCenterY(0);
+
+        mainPane.getChildren().add(mZeroDot);
     }
 
     private void drawShapes() {
@@ -365,12 +432,23 @@ public class MainController implements Initializable {
                 s.setTranslateY(-mMapZeroY);
             }
         }
+        if (mSelectdShape != null) {
+            mSelectdShape.getShape().setTranslateX(-mMapZeroX);
+            mSelectdShape.getShape().setTranslateY(-mMapZeroY);
+        }
         for (List<Shape> polyList : mPolylines.values()) {
             mainPane.getChildren().addAll(polyList);
         }
+        if (mSelectdShape != null) {
+            mainPane.getChildren().add(mSelectdShape.getShape());
+        }
+
     }
 
     private double getPrefetchBoxMargin() {
+        if (mShow3D) {
+            return PREFETCH_MARGIN_PIXEL * 2;
+        }
         return PREFETCH_MARGIN_PIXEL;
     }
 
@@ -390,8 +468,8 @@ public class MainController implements Initializable {
         return GISUtils.lat2pixel(mMapZoom, lat);
     }
 
-    public Polyline displayCoordsPolyline(JsonArray coords) {
-        Polyline polyline = new Polyline();
+    public Polyline displayCoordsPolyline(long osmId, JsonArray coords) {
+        OSMPolyline polyline = new OSMPolyline(osmId);
         Double[] points = new Double[coords.size() * 2];
         int j = 0;
         for (int i = 0; i < coords.size(); i++) {
@@ -412,16 +490,16 @@ public class MainController implements Initializable {
         return polyline;
     }
 
-    public Polyline clonePolyline(Polyline p) {
-        Polyline polyline = new Polyline();
+    public Polyline clonePolyline(long osmId, Polyline p) {
+        OSMPolyline polyline = new OSMPolyline(osmId);
         polyline.getPoints().addAll(p.getPoints());
         polyline.setTranslateX(-mMapZeroX);
         polyline.setTranslateY(-mMapZeroY);
         return polyline;
     }
 
-    public Polygon displayCoordsPolygon(JsonArray coords) {
-        Polygon polygon = new Polygon();
+    public Polygon displayCoordsPolygon(long osmId, JsonArray coords) {
+        OSMPolygon polygon = new OSMPolygon(osmId);
         Double[] points = new Double[coords.size() * 2];
         int j = 0;
         for (int i = 0; i < coords.size(); i++) {
@@ -450,12 +528,15 @@ public class MainController implements Initializable {
 
     private void calcMapZeroPos() {
         if (!mHeightUpdated) {
-            mRotate.setPivotY(mainPane.getHeight());
             mHeightUpdated = true;
+            mRotate.setPivotY(mainPane.getLayoutBounds().getCenterY());
+            mZRotate.setAngle(90);
+            mZRotate.setPivotY(mainPane.getLayoutBounds().getCenterY());
+            mZRotate.setPivotX(mainPane.getLayoutBounds().getCenterX());
+            //mainPane.getTransforms().add(mZRotate);
         }
-
-        mMapZeroX = mCenterPosX - mainPane.getWidth() / 2;
-        mMapZeroY = mCenterPosY - mainPane.getHeight() / 2;
+        mMapZeroX = mCenterPosX - mScene.getWidth() / 2;
+        mMapZeroY = mCenterPosY - mScene.getHeight() / 2;
     }
 
     private void calcCenterCoord() {
@@ -497,37 +578,7 @@ public class MainController implements Initializable {
     }
 
     private BoundingBox getVisibleBBox() {
-        double deltaY = 0;
-        double deltaX = 0;
-        if (mShow3D) {
-            deltaY = mainPane.getHeight() / Math.cos(ROTATE_X_VALUE);
-            deltaX = deltaY;
-        }
-
-        double y1 = mMapZeroY - deltaY;
-        double x1 = mMapZeroX - deltaX;
-
-        double y2 = mMapZeroY + deltaY;
-        double x2 = mMapZeroX + mainPane.getWidth() + 2 * deltaX;
-
-        double y3 = mMapZeroY + mainPane.getHeight();
-        double x3 = mMapZeroX;
-
-        double y4 = mMapZeroY + mainPane.getHeight();
-        double x4 = mMapZeroX + mainPane.getWidth();
-
-        List<Double> xList = new ArrayList<>();
-        Collections.addAll(xList, x1, x2, x3, x4);
-
-        List<Double> yList = new ArrayList<>();
-        Collections.addAll(yList, y1, y2, y3, y4);
-
-        double bboxX1 = Collections.min(xList);
-        double bboxY1 = Collections.min(yList);
-        double bboxX2 = Collections.max(xList);
-        double bboxY2 = Collections.max(yList);
-
-        return new BoundingBox(bboxX1, bboxY1, bboxX2 - bboxX1, bboxY2 - bboxY1);
+        return new BoundingBox(mMapZeroX, mMapZeroY, mScene.getWidth(), mScene.getHeight());
     }
 
     private BoundingBox getVisibleBBoxWithMargin(BoundingBox bbox) {
@@ -550,5 +601,57 @@ public class MainController implements Initializable {
 
     public int getZoom() {
         return mMapZoom;
+    }
+
+    // returns a copy
+    private OSMShape findShapeAtPoint(Point2D pos) {
+        // from top layer down
+        List<Integer> keyList = new ArrayList<>();
+        keyList.addAll(mPolylines.keySet());
+        Collections.reverse(keyList);
+
+        for (int layer : keyList) {
+            List<Shape> polyList = mPolylines.get(layer);
+            // again reverse by layer order
+            for (int i = polyList.size() - 1; i >= 0; i--) {
+                Shape s = polyList.get(i);
+                if (s instanceof  OSMPolygon) {
+                    if (s.contains(pos)) {
+                        OSMPolygon polygon = new OSMPolygon(((OSMPolygon) s).getOSMId(), (OSMPolygon) s);
+                        polygon.getPoints().addAll(((OSMPolygon) s).getPoints());
+                        polygon.setTranslateX(-mMapZeroX);
+                        polygon.setTranslateY(-mMapZeroY);
+                        return polygon;
+                    }
+                }
+                if (s instanceof OSMPolyline) {
+                    if (s.contains(pos)) {
+                        OSMPolyline polyline = new OSMPolyline(((OSMPolyline) s).getOSMId(), (OSMPolyline) s);
+                        polyline.getPoints().addAll(((OSMPolyline) s).getPoints());
+                        polyline.setTranslateX(-mMapZeroX);
+                        polyline.setTranslateY(-mMapZeroY);
+                        return polyline;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private OSMShape findShapeOfOSMId(long osmId) {
+        for (List<Shape> polyList : mPolylines.values()) {
+            for (Shape s : polyList) {
+                if (s instanceof OSMPolygon) {
+                    if (((OSMPolygon) s).getOSMId() == osmId) {
+                        OSMPolygon polygon = new OSMPolygon(((OSMPolygon) s).getOSMId(), (OSMPolygon) s);
+                        polygon.getPoints().addAll(((OSMPolygon) s).getPoints());
+                        polygon.setTranslateX(-mMapZeroX);
+                        polygon.setTranslateY(-mMapZeroY);
+                        return polygon;
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

@@ -4,7 +4,7 @@
 <?import javafx.scene.layout.*?>
 <?import javafx.scene.text.*?>
 
-<BorderPane fx:id="borderPane" prefHeight="200.0" prefWidth="200.0" xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.maxwen.osmviewer.MainController">
+<BorderPane fx:id="borderPane" xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.maxwen.osmviewer.MainController">
     <top>
         <HBox fx:id="buttons" prefHeight="27.0">
             <children>
@@ -31,6 +31,6 @@
         </HBox>
     </top>
     <center>
-        <Pane fx:id="mainPane" />
+        <Pane fx:id="mainPane" prefWidth="80000.0" />
     </center>
 </BorderPane>
