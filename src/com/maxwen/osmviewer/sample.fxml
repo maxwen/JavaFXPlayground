@@ -4,33 +4,34 @@
 <?import javafx.scene.layout.*?>
 <?import javafx.scene.text.*?>
 
-<BorderPane fx:id="borderPane" xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.maxwen.osmviewer.MainController">
+<BorderPane fx:id="borderPane" xmlns="http://javafx.com/javafx/10.0.2-internal" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.maxwen.osmviewer.MainController">
     <top>
         <HBox fx:id="buttons" prefHeight="27.0">
             <children>
-            <Pane HBox.hgrow="ALWAYS" />
-                <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+" />
-                <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0" text="-">
+                <Pane HBox.hgrow="ALWAYS"/>
+                <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+"/>
+                <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0"
+                       text="-">
                     <font>
-                        <Font name="System Bold" size="16.0" />
+                        <Font name="System Bold" size="16.0"/>
                     </font>
                 </Label>
-                <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
-                <Button fx:id="stepLeftButton" minWidth="80.0" mnemonicParsing="false" text="&lt;" />
-                <Button fx:id="stepUpButton" minWidth="80.0" mnemonicParsing="false" text="^" />
-                <Button fx:id="stepDownButton" minWidth="80.0" mnemonicParsing="false" text="v" />
-                <Button fx:id="stepRightButton" minWidth="80.0" mnemonicParsing="false" text="&gt;" />
-                <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="180.0" text=":">
+                <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-"/>
+                <Button fx:id="rotateLeftButton" mnemonicParsing="false" text="[" minWidth="80.0"/>
+                <Button fx:id="rotateRightButton" mnemonicParsing="false" text="]" minWidth="80.0"/>
+                <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="180.0"
+                       text=":">
                     <font>
-                        <Font name="System Bold" size="14.0" />
+                        <Font name="System Bold" size="14.0"/>
                     </font>
                 </Label>
-                <Button fx:id="quitButton" minWidth="80.0" mnemonicParsing="false" text="Quit" />
-            <Pane HBox.hgrow="ALWAYS" />
+                <Button fx:id="quitButton" minWidth="80.0" mnemonicParsing="false" text="Quit"/>
+                <Pane HBox.hgrow="ALWAYS"/>
             </children>
         </HBox>
     </top>
     <center>
-        <Pane fx:id="mainPane" prefWidth="80000.0" />
+        <Pane fx:id="mainPane" prefWidth="80000.0"/>
     </center>
 </BorderPane>

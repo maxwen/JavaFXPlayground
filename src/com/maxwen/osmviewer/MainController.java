@@ -3,26 +3,29 @@ package com.maxwen.osmviewer;
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
 import javafx.application.Platform;
-import javafx.css.Match;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
+import javafx.concurrent.Task;
+import javafx.concurrent.Worker;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.geometry.*;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.*;
-import javafx.scene.transform.NonInvertibleTransformException;
 import javafx.scene.transform.Rotate;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
 
+import javax.swing.plaf.nimbus.State;
 import java.net.URL;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class MainController implements Initializable {
     public static final int ROTATE_X_VALUE = 50;
@@ -51,6 +54,10 @@ public class MainController implements Initializable {
     BorderPane borderPane;
     @FXML
     HBox buttons;
+    @FXML
+    Button rotateLeftButton;
+    @FXML
+    Button rotateRightButton;
 
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
@@ -76,7 +83,11 @@ public class MainController implements Initializable {
     private Map<Integer, List<Shape>> mPolylines;
     private Rotate mZRotate;
     private OSMShape mSelectdShape;
-    private long mSelectdOSMId;
+    private long mSelectdOSMId = -1;
+    private Map<Long, JsonObject> mOSMObjects;
+    private OSMShape mPressedShape;
+    private int mRotateAnggle;
+    //private Circle mZeroDot;
 
     public static final int TUNNEL_LAYER_LEVEL = -1;
     public static final int AREA_LAYER_LEVEL = 0;
@@ -95,45 +106,85 @@ public class MainController implements Initializable {
             }
 
             if (mouseEvent.getEventType() == MouseEvent.MOUSE_PRESSED) {
-                mSelectdShape = null;
-                mSelectdOSMId = -1;
-                // getX and getY will be transformed pos
-                Point2D mapPos = new Point2D(mouseEvent.getX(), mouseEvent.getY());
-                Point2D coordPos = getCoordOfPos(mapPos);
-                posLabel.setText(String.format("%.6f:%.6f", coordPos.getX(), coordPos.getY()));
+                mPressedShape = null;
+                if (mouseEvent.isPrimaryButtonDown()) {
+                    if (mContextMenu.isShowing()) {
+                        mContextMenu.hide();
+                        return;
+                    }
 
-                Point2D mapPosNormalized = new Point2D(mapPos.getX() + mMapZeroX, mapPos.getY() + mMapZeroY);
-                mSelectdShape = findShapeAtPoint(mapPosNormalized);
-                if (mSelectdShape != null) {
-                    mSelectdShape.setSelected();
-                    mSelectdOSMId = mSelectdShape.getOSMId();
-                    drawShapes();
+                    // getX and getY will be transformed pos
+                    Point2D mapPos = new Point2D(mouseEvent.getX(), mouseEvent.getY());
+                    Point2D scenePos = new Point2D(mouseEvent.getSceneX(), mouseEvent.getSceneY());
+
+                    Point2D coordPos = getCoordOfPos(mapPos);
+                    posLabel.setText(String.format("%.6f:%.6f", coordPos.getX(), coordPos.getY()));
+
+                    Point2D mapPosNormalized = new Point2D(mapPos.getX() + mMapZeroX, mapPos.getY() + mMapZeroY);
+                    mPressedShape = findShapeAtPoint(mapPosNormalized);
                 }
             } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_RELEASED) {
                 mMouseMoving = false;
                 mMovePoint = null;
-            } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_DRAGGED) {
-                if (System.currentTimeMillis() - mLastMoveHandled < 100) {
-                    return;
-                }
-                if (!mMouseMoving) {
-                    mMovePoint = new Point2D(mouseEvent.getX(), mouseEvent.getY());
-                    mMouseMoving = true;
-                    mLastMoveHandled = 0;
-                } else {
-                    if (mMovePoint != null) {
-                        int diffX = (int) (mMovePoint.getX() - mouseEvent.getX());
-                        int diffY = (int) (mMovePoint.getY() - mouseEvent.getY());
 
-                        moveMap(diffX, diffY);
-                        mLastMoveHandled = System.currentTimeMillis();
+                if (mPressedShape != null) {
+                    mSelectdShape = mPressedShape;
+                    mSelectdShape.setSelected();
+                    mSelectdOSMId = mSelectdShape.getOSMId();
+
+                    Task<Void> t = new Task<Void>() {
+                        @Override
+                        protected Void call() throws Exception {
+                            JsonObject osmObject = mOSMObjects.get(mSelectdOSMId);
+                            if (osmObject != null) {
+                                System.err.println(osmObject);
+                            }
+                            //Platform.runLater(() -> drawShapes());
+
+                            return null;
+                        }
+                    };
+                    t.stateProperty().addListener(new ChangeListener<Worker.State>() {
+                        @Override public void changed(ObservableValue<? extends Worker.State> observableValue, Worker.State oldState, Worker.State newState) {
+                            System.out.println(oldState + " -> " + newState);
+                            if (newState == Worker.State.SUCCEEDED) {
+                                drawShapes();
+                            }
+                        }
+                    });
+                    t.setOnFailed(e -> {
+                        Throwable exception = e.getSource().getException();
+                        if (exception != null) {
+                        }
+                    });
+                    new Thread(t).start();
+                }
+            } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_DRAGGED) {
+                if (mouseEvent.isPrimaryButtonDown()) {
+                    mContextMenu.hide();
+                    mPressedShape = null;
+                    if (System.currentTimeMillis() - mLastMoveHandled < 100) {
+                        return;
+                    }
+                    if (!mMouseMoving) {
                         mMovePoint = new Point2D(mouseEvent.getX(), mouseEvent.getY());
+                        mMouseMoving = true;
+                        mLastMoveHandled = 0;
+                    } else {
+                        if (mMovePoint != null) {
+                            int diffX = (int) (mMovePoint.getX() - mouseEvent.getX());
+                            int diffY = (int) (mMovePoint.getY() - mouseEvent.getY());
+
+                            moveMap(diffX, diffY);
+                            mLastMoveHandled = System.currentTimeMillis();
+                            mMovePoint = new Point2D(mouseEvent.getX(), mouseEvent.getY());
+                        }
                     }
                 }
             }
         }
     };
-    private Circle mZeroDot;
+    private ContextMenu mContextMenu;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -151,6 +202,7 @@ public class MainController implements Initializable {
         mPolylines.put(STREET_LAYER_LEVEL, new ArrayList<>());
         mPolylines.put(RAILWAY_LAYER_LEVEL, new ArrayList<>());
         mPolylines.put(BRIDGE_LAYER_LEVEL, new ArrayList<>());
+        mOSMObjects = new HashMap<>();
 
         calcMapCenterPos();
 
@@ -164,7 +216,7 @@ public class MainController implements Initializable {
                 mMapZoom = zoom;
                 zoomLabel.setText(String.valueOf(mMapZoom));
                 calcMapCenterPos();
-                loadWays();
+                loadMapData();
             }
         });
         zoomOutButton.setOnAction(e -> {
@@ -178,31 +230,31 @@ public class MainController implements Initializable {
                     mShow3D = false;
                     mainPane.getTransforms().remove(mRotate);
                 }
-                loadWays();
+                loadMapData();
             }
         });
-        stepLeftButton.setOnAction(e -> {
-            Point2D p = new Point2D(-100, 0);
-            moveMap(p.getX(), p.getY());
+        rotateLeftButton.setOnAction(event -> {
+            int newAngle = mRotateAnggle - 15;
+            if (newAngle < 0) {
+                newAngle += 360;
+            }
+            mRotateAnggle = newAngle;
+            rotateMap();
         });
-        stepRightButton.setOnAction(e -> {
-            Point2D p = new Point2D(100, 0);
-            moveMap(p.getX(), p.getY());
-        });
-        stepUpButton.setOnAction(e -> {
-            Point2D p = new Point2D(0, -100);
-            moveMap(p.getX(), p.getY());
-        });
-        stepDownButton.setOnAction(e -> {
-            Point2D p = new Point2D(0, 100);
-            moveMap(p.getX(), p.getY());
+        rotateRightButton.setOnAction(event -> {
+            int newAngle = mRotateAnggle + 15;
+            if (newAngle >= 360) {
+                newAngle -= 360;
+            }
+            mRotateAnggle = newAngle;
+            rotateMap();
         });
         zoomLabel.setText(String.valueOf(mMapZoom));
         mainPane.setOnMousePressed(mouseHandler);
         mainPane.setOnMouseReleased(mouseHandler);
         mainPane.setOnMouseDragged(mouseHandler);
 
-        ContextMenu contextMenu = new ContextMenu();
+        mContextMenu = new ContextMenu();
         MenuItem menuItem = new MenuItem(" Mouse pos ");
         menuItem.setOnAction(ev -> {
             Point2D coordPos = getCoordOfPos(mMapPos);
@@ -220,32 +272,29 @@ public class MainController implements Initializable {
             mContextPopup = createPopup(s.toString());
             mContextPopup.show(mPrimaryStage);
         });
-        contextMenu.getItems().add(menuItem);
+        mContextMenu.getItems().add(menuItem);
         menuItem = new MenuItem(" Toggle 3D ");
         menuItem.setOnAction(ev -> {
             if (mMapZoom >= 16) {
                 if (mShow3D) {
                     mShow3D = false;
                     mainPane.getTransforms().clear();
-                    //mainPane.getTransforms().add(mZRotate);
-                    loadWays();
-                    System.err.println(mZeroDot.localToScene(mZeroDot.getCenterX(), mZeroDot.getCenterY()));
+                    mainPane.getTransforms().add(mZRotate);
+                    loadMapData();
 
                 } else {
                     mShow3D = true;
                     mainPane.getTransforms().clear();
                     mainPane.getTransforms().add(mRotate);
-                    //mainPane.getTransforms().add(mZRotate);
-                    loadWays();
-                    System.err.println(mZeroDot.localToScene(mZeroDot.getCenterX(), mZeroDot.getCenterY()));
-
+                    mainPane.getTransforms().add(mZRotate);
+                    loadMapData();
                 }
             }
         });
-        contextMenu.getItems().add(menuItem);
+        mContextMenu.getItems().add(menuItem);
         mainPane.setOnContextMenuRequested((ev) -> {
             mMapPos = new Point2D(ev.getX(), ev.getY());
-            contextMenu.show(mainPane, ev.getScreenX(), ev.getScreenY());
+            mContextMenu.show(mainPane, ev.getScreenX(), ev.getScreenY());
         });
 
         mRotate = new Rotate(-ROTATE_X_VALUE, Rotate.X_AXIS);
@@ -255,16 +304,33 @@ public class MainController implements Initializable {
         borderPane.setTop(buttons);
     }
 
+    private void rotateMap() {
+        mZRotate.setAngle(mRotateAnggle);
+    }
+
     protected void setStage(Stage primaryStage) {
         mPrimaryStage = primaryStage;
     }
 
     protected void setScene(Scene scene) {
         mScene = scene;
+
+        mScene.setOnKeyPressed(new EventHandler<KeyEvent>() {
+            @Override
+            public void handle(KeyEvent event) {
+                switch (event.getCode()) {
+                    case ESCAPE:
+                        mSelectdShape = null;
+                        mSelectdOSMId = -1;
+                        drawShapes();
+                        break;
+                }
+            }
+        });
     }
 
-    protected void setPane(Pane pane) {
-        mainPane = pane;
+    public void addToOSMCache(long osmId, JsonObject osmObject) {
+        mOSMObjects.put(osmId, osmObject);
     }
 
     private Popup createPopup(String text) {
@@ -350,10 +416,11 @@ public class MainController implements Initializable {
         }
     }
 
-    public void loadWays() {
+    public void loadMapData() {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
         //System.out.println("load " + mMapZoom);
+        mOSMObjects.clear();
         for (List<Shape> polyList : mPolylines.values()) {
             polyList.clear();
         }
@@ -405,7 +472,7 @@ public class MainController implements Initializable {
         }
 
         //System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
-        Circle centerDot = new Circle();
+        /*Circle centerDot = new Circle();
         centerDot.setFill(Color.RED);
         centerDot.setRadius(10);
         centerDot.setCenterX(mCenterPosX - mMapZeroX);
@@ -416,10 +483,10 @@ public class MainController implements Initializable {
         mZeroDot = new Circle();
         mZeroDot.setFill(Color.BLUE);
         mZeroDot.setRadius(10);
-        mZeroDot.setCenterX(0);
-        mZeroDot.setCenterY(0);
+        mZeroDot.setCenterX(400);
+        mZeroDot.setCenterY(400);
 
-        mainPane.getChildren().add(mZeroDot);
+        mainPane.getChildren().add(mZeroDot);*/
     }
 
     private void drawShapes() {
@@ -530,10 +597,9 @@ public class MainController implements Initializable {
         if (!mHeightUpdated) {
             mHeightUpdated = true;
             mRotate.setPivotY(mainPane.getLayoutBounds().getCenterY());
-            mZRotate.setAngle(90);
             mZRotate.setPivotY(mainPane.getLayoutBounds().getCenterY());
             mZRotate.setPivotX(mainPane.getLayoutBounds().getCenterX());
-            //mainPane.getTransforms().add(mZRotate);
+            mainPane.getTransforms().add(mZRotate);
         }
         mMapZeroX = mCenterPosX - mScene.getWidth() / 2;
         mMapZeroY = mCenterPosY - mScene.getHeight() / 2;
@@ -561,7 +627,7 @@ public class MainController implements Initializable {
 
         BoundingBox bbox = getVisibleBBox();
         if (!mFetchBBox.contains(bbox)) {
-            loadWays();
+            loadMapData();
         } else {
             drawShapes();
         }
@@ -615,7 +681,7 @@ public class MainController implements Initializable {
             // again reverse by layer order
             for (int i = polyList.size() - 1; i >= 0; i--) {
                 Shape s = polyList.get(i);
-                if (s instanceof  OSMPolygon) {
+                if (s instanceof OSMPolygon) {
                     if (s.contains(pos)) {
                         OSMPolygon polygon = new OSMPolygon(((OSMPolygon) s).getOSMId(), (OSMPolygon) s);
                         polygon.getPoints().addAll(((OSMPolygon) s).getPoints());

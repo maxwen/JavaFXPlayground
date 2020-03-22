@@ -160,6 +160,7 @@ public class DatabaseController {
                     System.out.println(e.getMessage());
                 }
 
+                controller.addToOSMCache(osmId, way);
                 ways.add(way);
 
                 boolean showCasing = controller.getZoom() >= 17;
@@ -248,6 +249,7 @@ public class DatabaseController {
                 } catch (JsonException e) {
                     System.out.println(e.getMessage());
                 }
+                controller.addToOSMCache(osmId, area);
                 areas.add(area);
 
                 boolean isBuilding = areaType == OSMUtils.AREA_TYPE_BUILDING;
@@ -326,6 +328,7 @@ public class DatabaseController {
                 } catch (JsonException e) {
                     System.out.println(e.getMessage());
                 }
+                controller.addToOSMCache(osmId, area);
                 areas.add(area);
                 count++;
 

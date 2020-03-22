@@ -2,6 +2,8 @@ package com.maxwen.osmviewer;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class OSMUtils {
     public static final int STREET_TYPE_SERVICE = 0;
@@ -33,8 +35,13 @@ public class OSMUtils {
 
     public static final String ADMIN_LEVEL_SET = "(2, 4, 6, 8)";
 
-    public static final Set<String> LANDUSE_NATURAL_TYPE_SET = Set.of("forest","grass","field","farm","farmland","meadow",
-            "greenfield","brownfield","farmyard","recreation_ground","village_green","allotments","orchard");
-    public static final Set<String> LANDUSE_WATER_TYPE_SET= Set.of("reservoir","basin","water");
-    public static final Set<String> NATURAL_WATER_TYPE_SET = Set.of("water", "riverbank", "wetland", "marsh", "mud");
+    public static final Set<String> LANDUSE_NATURAL_TYPE_SET = Stream.of("forest", "grass", "field", "farm", "farmland", "meadow",
+            "greenfield", "brownfield", "farmyard", "recreation_ground", "village_green", "allotments", "orchard")
+            .collect(Collectors.toCollection(HashSet::new));
+    public static final Set<String> LANDUSE_WATER_TYPE_SET = Stream.of("reservoir", "basin", "water")
+            .collect(Collectors.toCollection(HashSet::new));
+    public static final Set<String> NATURAL_WATER_TYPE_SET = Stream.of("water", "riverbank", "wetland", "marsh", "mud")
+            .collect(Collectors.toCollection(HashSet::new));
+
+    //Set.of("water", "riverbank", "wetland", "marsh", "mud");
 }
