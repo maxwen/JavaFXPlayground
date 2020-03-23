@@ -258,7 +258,11 @@ public class DatabaseController {
                 for (int j = 0; j < coords.size(); j++) {
                     JsonArray innerCoords = (JsonArray) coords.get(j);
                     Polygon polygon = controller.displayCoordsPolygon(osmId, innerCoords);
-                    OSMStyle.amendArea(area, polygon, controller.getZoom());
+                    if (isBuilding) {
+                        OSMStyle.amendBuilding(area, polygon, controller.getZoom());
+                    } else {
+                        OSMStyle.amendArea(area, polygon, controller.getZoom());
+                    }
                     if (layer < 0) {
                         polylines.get(MainController.TUNNEL_LAYER_LEVEL).add(polygon);
                     } else if (isBuilding) {

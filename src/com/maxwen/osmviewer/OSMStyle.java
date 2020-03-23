@@ -323,6 +323,12 @@ public class OSMStyle {
         areaLine.setSmooth(true);
     }
 
+    public static void amendBuilding(JsonObject area, Shape areaLine, int zoom) {
+        areaLine.setFill(getAreaColor(area, zoom));
+        areaLine.setStroke(Color.LIGHTGRAY);
+        areaLine.setSmooth(true);
+    }
+
     public static void amendLineArea(JsonObject area, Shape areaLine, int zoom) {
         areaLine.setStroke(getAreaColor(area, zoom));
         areaLine.setSmooth(true);

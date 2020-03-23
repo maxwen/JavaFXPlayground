@@ -1,21 +1,27 @@
 package com.maxwen.osmviewer.nmea;
 
+import com.github.cliftonlabs.json_simple.JsonObject;
+
 import java.util.List;
 
 public interface NMEAHandler {
-    void onStart();
+    default void onStart() {
+    }
 
-    void onLocation1(double lon, double lat, double altitude);
+    void onLocation(JsonObject gpsData);
 
-    void onLocation2(double speed, double bearing);
+    default void onSatellites(List<GpsSatellite> satellites) {
+    }
 
-    void onSatellites(List<GpsSatellite> satellites);
+    default void onUnrecognized(String sentence) {
+    }
 
-    void onUnrecognized(String sentence);
+    default void onBadChecksum(int expected, int actual) {
+    }
 
-    void onBadChecksum(int expected, int actual);
+    default void onException(Exception e) {
+    }
 
-    void onException(Exception e);
-
-    void onFinish();
+    default void onFinish() {
+    }
 }

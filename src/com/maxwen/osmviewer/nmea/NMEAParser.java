@@ -1,5 +1,6 @@
 package com.maxwen.osmviewer.nmea;
 
+import com.github.cliftonlabs.json_simple.JsonObject;
 import com.maxwen.osmviewer.nmea.basic.BasicNMEAHandler;
 import com.maxwen.osmviewer.nmea.basic.BasicNMEAParser;
 
@@ -14,11 +15,11 @@ public class NMEAParser implements BasicNMEAHandler {
     private static final int SATELLITES_COUNT = 24;
     private final NMEAHandler handler;
     private final BasicNMEAParser basicParser;
-    private double lon;
-    private double lat;
-    private double altitude;
-    private double speed;
-    private double bearing;
+    private double lon = -1;
+    private double lat = -1;
+    private double altitude = -1;
+    private double speed = -1;
+    private double bearing = -1;
     private long lastTime;
     private int flags;
     private int satellitesCount;
@@ -96,7 +97,13 @@ public class NMEAParser implements BasicNMEAHandler {
     public synchronized void onRMC(long date, long time, double latitude, double longitude, float speed, float direction) {
         this.speed = speed;
         this.bearing = direction;
-        handler.onLocation2(speed, direction);
+        JsonObject gpsData = new JsonObject();
+        gpsData.put("lat", this.lat);
+        gpsData.put("lon", this.lon);
+        gpsData.put("speed", this.speed);
+        gpsData.put("bearing", this.bearing);
+        gpsData.put("altitude", this.altitude);
+        handler.onLocation(gpsData);
 
     }
 
@@ -105,7 +112,13 @@ public class NMEAParser implements BasicNMEAHandler {
         this.lat = latitude;
         this.lon = longitude;
         this.altitude = altitude;
-        handler.onLocation1(longitude, latitude, altitude);
+        JsonObject gpsData = new JsonObject();
+        gpsData.put("lat", this.lat);
+        gpsData.put("lon", this.lon);
+        gpsData.put("speed", this.speed);
+        gpsData.put("bearing", this.bearing);
+        gpsData.put("altitude", this.altitude);
+        handler.onLocation(gpsData);
     }
 
     @Override

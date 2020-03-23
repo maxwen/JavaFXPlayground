@@ -30,33 +30,25 @@ import java.io.InputStreamReader;
 import java.util.List;
 
 public class Main extends Application {
-    public static final String DEV_TTY_ACM_0 = "dev/ttyACM0";
     private MainController mController;
     private Scene mScene;
-    private boolean mStopGPSThread;
-
-    @FXML
-    Button closeMenu;
-    private Thread mGPSTread;
 
     @Override
     public void start(Stage primaryStage) throws Exception {
         System.out.println("start");
         FXMLLoader loader = new FXMLLoader(getClass().getResource("sample.fxml"));
         Parent root = loader.load();
-        //Pane pane = new Pane();
 
         mController = loader.getController();
         mController.setStage(primaryStage);
-        //mController.setPane(pane);
-        //mController.init();
-        primaryStage.setTitle("Hello World");
+        primaryStage.setTitle("OSM");
         mScene = new Scene(root, 1280, 800, false, SceneAntialiasing.BALANCED);
         PerspectiveCamera camera = new PerspectiveCamera();
         mScene.setCamera(camera);
         mController.setScene(mScene);
         primaryStage.setScene(mScene);
         primaryStage.show();
+
         mController.loadMapData();
 
         /*Pane pane = new Pane();
@@ -95,75 +87,6 @@ public class Main extends Application {
         System.err.println(p);
 
         System.err.println(r.localToParent(0, 0));*/
-
-        NMEAHandler handler = new NMEAHandler() {
-            @Override
-            public void onStart() {
-            }
-
-            @Override
-            public void onLocation1(double lon, double lat, double altitude) {
-                System.err.println("onLocation1 " + lon + " " + lat + " " + altitude);
-            }
-
-            @Override
-            public void onLocation2(double speed, double bearing) {
-                System.err.println("onLocation2 " + speed + " " + bearing);
-            }
-
-            @Override
-            public void onSatellites(List<GpsSatellite> satellites) {
-                System.err.println("onSatellites " + satellites);
-            }
-
-            @Override
-            public void onUnrecognized(String sentence) {
-            }
-
-            @Override
-            public void onBadChecksum(int expected, int actual) {
-            }
-
-            @Override
-            public void onException(Exception e) {
-            }
-
-            @Override
-            public void onFinish() {
-            }
-        };
-        NMEAParser parser = new NMEAParser(handler);
-        mStopGPSThread = false;
-        final SerialPort port = SerialPort.getCommPort(DEV_TTY_ACM_0);
-        if (port != null && port.openPort()) {
-            Task<Void> t = new Task<Void>() {
-                @Override
-                protected Void call() throws Exception {
-                    port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 0, 0);
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(port.getInputStream()));
-                    try {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            //System.out.println(line);
-                            parser.parse(line);
-                            if (mStopGPSThread) {
-                                break;
-                            }
-                        }
-                        reader.close();
-                    } catch (Exception e) {
-                    }
-                    port.closePort();
-                    mGPSTread = null;
-                    return null;
-                }
-            };
-            mGPSTread = new Thread(t);
-            mGPSTread.start();
-        } else {
-            System.err.println("open port " + DEV_TTY_ACM_0 + " failed");
-        }
-
     }
 
     @Override
@@ -177,10 +100,7 @@ public class Main extends Application {
     public void stop() {
         System.out.println("stop");
         DatabaseController.getInstance().disconnectAll();
-        if (mGPSTread != null) {
-            mStopGPSThread = true;
-            mGPSTread.interrupt();
-        }
+        mController.stop();
     }
 
     public static void main(String[] args) {

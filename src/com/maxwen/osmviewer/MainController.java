@@ -2,6 +2,7 @@ package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
+import com.maxwen.osmviewer.nmea.NMEAHandler;
 import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
@@ -22,12 +23,11 @@ import javafx.scene.transform.Rotate;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
 
-import javax.swing.plaf.nimbus.State;
 import java.net.URL;
 import java.util.*;
 import java.util.List;
 
-public class MainController implements Initializable {
+public class MainController implements Initializable, NMEAHandler {
     public static final int ROTATE_X_VALUE = 50;
     public static final int PREFETCH_MARGIN_PIXEL = 800;
     @FXML
@@ -58,6 +58,10 @@ public class MainController implements Initializable {
     Button rotateLeftButton;
     @FXML
     Button rotateRightButton;
+    @FXML
+    Button gpsPosButton;
+    @FXML
+    CheckBox trackModeButton;
 
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
@@ -87,7 +91,11 @@ public class MainController implements Initializable {
     private Map<Long, JsonObject> mOSMObjects;
     private OSMShape mPressedShape;
     private int mRotateAnggle;
-    //private Circle mZeroDot;
+    private Point2D mGPSPos = new Point2D(0, 0);
+    private Circle mGPSDot;
+    private JsonObject mGPSData;
+    private boolean mTrackMode;
+    private GPSThread mGPSThread;
 
     public static final int TUNNEL_LAYER_LEVEL = -1;
     public static final int AREA_LAYER_LEVEL = 0;
@@ -96,6 +104,7 @@ public class MainController implements Initializable {
     public static final int STREET_LAYER_LEVEL = 3;
     public static final int RAILWAY_LAYER_LEVEL = 4;
     public static final int BRIDGE_LAYER_LEVEL = 5;
+
 
     EventHandler<MouseEvent> mouseHandler = new EventHandler<MouseEvent>() {
         @Override
@@ -145,7 +154,8 @@ public class MainController implements Initializable {
                         }
                     };
                     t.stateProperty().addListener(new ChangeListener<Worker.State>() {
-                        @Override public void changed(ObservableValue<? extends Worker.State> observableValue, Worker.State oldState, Worker.State newState) {
+                        @Override
+                        public void changed(ObservableValue<? extends Worker.State> observableValue, Worker.State oldState, Worker.State newState) {
                             System.out.println(oldState + " -> " + newState);
                             if (newState == Worker.State.SUCCEEDED) {
                                 drawShapes();
@@ -185,6 +195,7 @@ public class MainController implements Initializable {
         }
     };
     private ContextMenu mContextMenu;
+    private Point2D mMapGPSPos;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -203,7 +214,6 @@ public class MainController implements Initializable {
         mPolylines.put(RAILWAY_LAYER_LEVEL, new ArrayList<>());
         mPolylines.put(BRIDGE_LAYER_LEVEL, new ArrayList<>());
         mOSMObjects = new HashMap<>();
-
         calcMapCenterPos();
 
         quitButton.setOnAction(e -> {
@@ -248,6 +258,27 @@ public class MainController implements Initializable {
             }
             mRotateAnggle = newAngle;
             rotateMap();
+        });
+        gpsPosButton.setOnAction(event -> {
+            moveToGPSPos();
+        });
+        trackModeButton.setOnAction(event -> {
+            mTrackMode = trackModeButton.isSelected();
+            if (mTrackMode) {
+                mGPSData = null;
+                mGPSThread = new GPSThread();
+                if (!mGPSThread.startThread(MainController.this)) {
+                    System.err.println("open port " + GPSThread.DEV_TTY_ACM_0 + " failed");
+                    mMapGPSPos = new Point2D(0, 0);
+                }
+            } else {
+                if (mGPSThread != null) {
+                    mGPSThread.stopThread();
+                    mMapGPSPos = new Point2D(0, 0);
+                    mGPSData = null;
+                    drawShapes();
+                }
+            }
         });
         zoomLabel.setText(String.valueOf(mMapZoom));
         mainPane.setOnMousePressed(mouseHandler);
@@ -297,11 +328,27 @@ public class MainController implements Initializable {
             mContextMenu.show(mainPane, ev.getScreenX(), ev.getScreenY());
         });
 
+        mGPSDot = new Circle();
+        mGPSDot.setFill(Color.TRANSPARENT);
+        mGPSDot.setRadius(10);
+        mGPSDot.setStroke(Color.BLACK);
+        mGPSDot.setStrokeWidth(2);
+
         mRotate = new Rotate(-ROTATE_X_VALUE, Rotate.X_AXIS);
         mZRotate = new Rotate();
 
         borderPane.setTop(new TextField("Top"));
         borderPane.setTop(buttons);
+    }
+
+    public void stop() {
+        if (mGPSThread != null) {
+            mGPSThread.stopThread();
+            try {
+                mGPSThread.join();
+            } catch (InterruptedException e) {
+            }
+        }
     }
 
     private void rotateMap() {
@@ -419,7 +466,7 @@ public class MainController implements Initializable {
     public void loadMapData() {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
-        //System.out.println("load " + mMapZoom);
+        System.out.println("loadMapData " + mMapZoom);
         mOSMObjects.clear();
         for (List<Shape> polyList : mPolylines.values()) {
             polyList.clear();
@@ -471,22 +518,9 @@ public class MainController implements Initializable {
             mainPane.getChildren().add(mSelectdShape.getShape());
         }
 
-        //System.out.println("load " + mMapZoom + " " + (System.currentTimeMillis() - t));
-        /*Circle centerDot = new Circle();
-        centerDot.setFill(Color.RED);
-        centerDot.setRadius(10);
-        centerDot.setCenterX(mCenterPosX - mMapZeroX);
-        centerDot.setCenterY(mCenterPosY - mMapZeroY);
-
-        mainPane.getChildren().add(centerDot);
-
-        mZeroDot = new Circle();
-        mZeroDot.setFill(Color.BLUE);
-        mZeroDot.setRadius(10);
-        mZeroDot.setCenterX(400);
-        mZeroDot.setCenterY(400);
-
-        mainPane.getChildren().add(mZeroDot);*/
+        if (isPositionVisible(mMapGPSPos)) {
+            addGPSDot();
+        }
     }
 
     private void drawShapes() {
@@ -509,7 +543,9 @@ public class MainController implements Initializable {
         if (mSelectdShape != null) {
             mainPane.getChildren().add(mSelectdShape.getShape());
         }
-
+        if (isPositionVisible(mMapGPSPos)) {
+            addGPSDot();
+        }
     }
 
     private double getPrefetchBoxMargin() {
@@ -719,5 +755,70 @@ public class MainController implements Initializable {
             }
         }
         return null;
+    }
+
+    private void updateGPSPos(JsonObject gpsData) {
+        double lat = (double) gpsData.get("lat");
+        double lon = (double) gpsData.get("lon");
+        boolean hasMoved = false;
+
+        if (mGPSData != null) {
+            if (lat != (double) mGPSData.get("lat") || lon != (double) mGPSData.get("lon")) {
+                hasMoved = true;
+                // TODO also use speed
+            }
+        } else {
+            hasMoved = true;
+        }
+        mGPSData = gpsData;
+
+        if (hasMoved && mTrackMode) {
+            mGPSPos = new Point2D(lon, lat);
+            mMapGPSPos = new Point2D(getPixelXPosForLocationDeg(mGPSPos.getX()),
+                    getPixelYPosForLocationDeg(mGPSPos.getY()));
+            moveToGPSPos();
+        }
+    }
+
+    private void moveToGPSPos() {
+        System.out.println("moveToGPSPos");
+        mCenterLat = mGPSPos.getY();
+        mCenterLon = mGPSPos.getX();
+        double bearing = (double) mGPSData.get("bearing");
+        if (bearing != -1) {
+            mZRotate.setAngle(bearing);
+        }
+
+        posLabel.setText(String.format("%.6f:%.6f", mCenterLon, mCenterLat));
+
+        calcMapCenterPos();
+        calcMapZeroPos();
+
+        BoundingBox bbox = getVisibleBBox();
+        if (!mFetchBBox.contains(bbox)) {
+            loadMapData();
+        } else {
+            drawShapes();
+        }
+    }
+
+    private boolean isPositionVisible(Point2D mapPos) {
+        return mFetchBBox.contains(mapPos);
+    }
+
+    private void addGPSDot() {
+        mGPSDot.setCenterX(mMapGPSPos.getX() - mMapZeroX);
+        mGPSDot.setCenterY(mMapGPSPos.getY() - mMapZeroY);
+        mainPane.getChildren().add(mGPSDot);
+    }
+
+    @Override
+    public void onLocation(JsonObject gpsData) {
+        Platform.runLater(new Runnable() {
+            @Override
+            public void run() {
+                updateGPSPos(gpsData);
+            }
+        });
     }
 }

@@ -1,5 +1,7 @@
 package com.maxwen.osmviewer.nmea;
 
+import com.github.cliftonlabs.json_simple.JsonObject;
+
 import java.util.List;
 
 public class NMEAAdapter implements NMEAHandler {
@@ -9,14 +11,9 @@ public class NMEAAdapter implements NMEAHandler {
     }
 
     @Override
-    public void onLocation1(double lon, double lat, double altitude) {
-
+    public void onLocation(JsonObject gpsData) {
     }
 
-    @Override
-    public void onLocation2(double speed, double bearing) {
-
-    }
 
     @Override
     public void onSatellites(List<GpsSatellite> satellites) {
