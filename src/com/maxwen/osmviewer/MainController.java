@@ -781,12 +781,15 @@ public class MainController implements Initializable, NMEAHandler {
     }
 
     private void moveToGPSPos() {
+        if (mGPSData == null) {
+            return;
+        }
         System.out.println("moveToGPSPos");
         mCenterLat = mGPSPos.getY();
         mCenterLon = mGPSPos.getX();
         double bearing = (double) mGPSData.get("bearing");
         if (bearing != -1) {
-            mZRotate.setAngle(bearing);
+            mZRotate.setAngle(360 - bearing);
         }
 
         posLabel.setText(String.format("%.6f:%.6f", mCenterLon, mCenterLat));
