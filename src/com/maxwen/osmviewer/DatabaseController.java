@@ -23,6 +23,7 @@ public class DatabaseController {
     private Connection mAdminConnection;
     private static DatabaseController sInstance;
     private boolean mConnected;
+    private final String mDBHome;
 
     public static DatabaseController getInstance() {
         if (sInstance == null) {
@@ -32,16 +33,18 @@ public class DatabaseController {
     }
 
     private DatabaseController() {
+        mDBHome = System.getProperty("osm.db.path");
+        System.out.println("DatabaseController db home: " + mDBHome);
     }
 
     public boolean connextAll() {
         try {
-            mEdgeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/edge.db");
-            mAreaConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/area.db");
-            mAddressConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/adress.db");
-            mWaysConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/ways.db");
-            mNodeConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/nodes.db");
-            mAdminConnection = connect("jdbc:sqlite:/home/maxl/workspaces/car-dash/data2.new/admin.db");
+            mEdgeConnection = connect("jdbc:sqlite:" + mDBHome + "/edge.db");
+            mAreaConnection = connect("jdbc:sqlite:" + mDBHome + "/area.db");
+            mAddressConnection = connect("jdbc:sqlite:"  + mDBHome + "adress.db");
+            mWaysConnection = connect("jdbc:sqlite:" + mDBHome + "/ways.db");
+            mNodeConnection = connect("jdbc:sqlite:"  + mDBHome + "/nodes.db");
+            mAdminConnection = connect("jdbc:sqlite:"  + mDBHome + "/admin.db");
             mConnected = true;
             return true;
         } catch (SQLException e) {
