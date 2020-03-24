@@ -4,6 +4,8 @@ import com.github.cliftonlabs.json_simple.JsonObject;
 import com.maxwen.osmviewer.nmea.basic.BasicNMEAHandler;
 import com.maxwen.osmviewer.nmea.basic.BasicNMEAParser;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -98,26 +100,26 @@ public class NMEAParser implements BasicNMEAHandler {
         this.speed = speed;
         this.bearing = direction;
         JsonObject gpsData = new JsonObject();
-        gpsData.put("lat", this.lat);
-        gpsData.put("lon", this.lon);
-        gpsData.put("speed", (int) this.speed);
-        gpsData.put("bearing", (int) this.bearing);
-        gpsData.put("altitude", (int) this.altitude);
+        gpsData.put("lat", new BigDecimal(this.lat));
+        gpsData.put("lon", new BigDecimal(this.lon));
+        gpsData.put("speed", new BigDecimal((int) this.speed));
+        gpsData.put("bearing", new BigDecimal((int) this.bearing));
+        gpsData.put("altitude", new BigDecimal((int) this.altitude));
         handler.onLocation(gpsData);
 
     }
 
     @Override
     public synchronized void onGGA(long time, double latitude, double longitude, float altitude, FixQuality quality, int satellites, float hdop) {
-        this.lat = Double.valueOf(String.format("%.6f", latitude));
-        this.lon = Double.valueOf(String.format("%.6f", longitude));
+        this.lat = latitude;
+        this.lon = longitude;
         this.altitude = altitude;
         JsonObject gpsData = new JsonObject();
-        gpsData.put("lat", this.lat);
-        gpsData.put("lon", this.lon);
-        gpsData.put("speed", (int) this.speed);
-        gpsData.put("bearing", (int) this.bearing);
-        gpsData.put("altitude", (int) this.altitude);
+        gpsData.put("lat", new BigDecimal(this.lat));
+        gpsData.put("lon", new BigDecimal(this.lon));
+        gpsData.put("speed", new BigDecimal((int) this.speed));
+        gpsData.put("bearing", new BigDecimal((int) this.bearing));
+        gpsData.put("altitude", new BigDecimal((int) this.altitude));
         handler.onLocation(gpsData);
     }
 

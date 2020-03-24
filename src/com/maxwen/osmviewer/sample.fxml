@@ -12,23 +12,37 @@
                 <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+" />
                 <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0" text="-">
                     <font>
-                        <Font name="System Bold" size="16.0" />
+                        <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
                 <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
                 <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="180.0" text=":">
                     <font>
-                        <Font name="System Bold" size="14.0" />
+                        <Font name="System Bold" size="20.0" />
+                    </font>
+                </Label>
+                <Label fx:id="altLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0">
+                    <font>
+                        <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
                 <Label fx:id="speedLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0">
                     <font>
-                        <Font name="System Bold" size="14.0" />
+                        <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
                 <Button fx:id="gpsPosButton" minWidth="80.0" mnemonicParsing="false" text="GPS" />
                 <CheckBox fx:id="trackModeButton" minHeight="-Infinity" mnemonicParsing="false" prefHeight="27.0" text="Track" />
                 <Button fx:id="quitButton" minWidth="80.0" mnemonicParsing="false" text="Quit" />
+                <Pane HBox.hgrow="ALWAYS" />
+            </children>
+        </HBox>
+        <HBox fx:id="trackButtons" prefHeight="27.0">
+            <children>
+                <Pane HBox.hgrow="ALWAYS" />
+                <Button fx:id="startReplayButton" minWidth="80.0" mnemonicParsing="false" text=">" />
+                <Button fx:id="pauseReplayButton" minWidth="80.0" mnemonicParsing="false" text="||" />
+                <Button fx:id="stopReplayButton" minWidth="80.0" mnemonicParsing="false" text="o" />
                 <Pane HBox.hgrow="ALWAYS" />
             </children>
         </HBox>

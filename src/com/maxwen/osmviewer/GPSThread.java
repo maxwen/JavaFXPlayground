@@ -16,7 +16,7 @@ public class GPSThread extends Thread {
     private static Runnable t = new Runnable() {
         @Override
         public void run() {
-            System.out.println("GPSThread started");
+            LogUtils.log("GPSThread started");
             BufferedReader reader = new BufferedReader(new InputStreamReader(port.getInputStream()));
             try {
                 String line;
@@ -29,7 +29,7 @@ public class GPSThread extends Thread {
                 reader.close();
             } catch (Exception e) {
             }
-            System.out.println("GPSThread stopped");
+            LogUtils.log("GPSThread stopped");
         }
     };
 

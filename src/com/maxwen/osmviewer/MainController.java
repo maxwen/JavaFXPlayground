@@ -2,6 +2,7 @@ package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
+import com.github.cliftonlabs.json_simple.Jsoner;
 import com.maxwen.osmviewer.nmea.GpsSatellite;
 import com.maxwen.osmviewer.nmea.NMEAHandler;
 import javafx.application.Platform;
@@ -27,6 +28,7 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URL;
 import java.util.*;
 import java.util.List;
@@ -56,6 +58,17 @@ public class MainController implements Initializable, NMEAHandler {
     CheckBox trackModeButton;
     @FXML
     Label speedLabel;
+    @FXML
+    Label altLabel;
+    @FXML
+    Button startReplayButton;
+    @FXML
+    Button stopReplayButton;
+    @FXML
+    Button pauseReplayButton;
+    @FXML
+    HBox trackButtons;
+
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
     private int mMapZoom = 16;
@@ -88,6 +101,7 @@ public class MainController implements Initializable, NMEAHandler {
     private JsonObject mGPSData;
     private boolean mTrackMode;
     private GPSThread mGPSThread;
+    private boolean mTrackReplayMode;
 
     public static final int TUNNEL_LAYER_LEVEL = -1;
     public static final int AREA_LAYER_LEVEL = 0;
@@ -168,6 +182,8 @@ public class MainController implements Initializable, NMEAHandler {
     };
     private ContextMenu mContextMenu;
     private Point2D mMapGPSPos;
+    private TrackReplayThread mTrackReplayThread;
+    private File mTrackFile;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -244,6 +260,31 @@ public class MainController implements Initializable, NMEAHandler {
                 }
             }
         });
+
+        startReplayButton.setOnAction(event -> {
+            if (mTrackFile != null) {
+                mTrackReplayThread = new TrackReplayThread();
+                mTrackReplayMode = true;
+                mTrackReplayThread.startThread(mTrackFile, this);
+            }
+        });
+        stopReplayButton.setOnAction(event -> {
+            if (mTrackReplayThread != null) {
+                mTrackReplayMode = false;
+                mTrackReplayThread.stopThread();
+                try {
+                    mTrackReplayThread.join();
+                } catch (InterruptedException e) {
+                }
+                mTrackReplayThread = null;
+            }
+        });
+        pauseReplayButton.setOnAction(event -> {
+            if (mTrackReplayThread != null) {
+                mTrackReplayThread.pauseThread();
+            }
+        });
+
         zoomLabel.setText(String.valueOf(mMapZoom));
         mainPane.setOnMousePressed(mouseHandler);
         mainPane.setOnMouseReleased(mouseHandler);
@@ -291,9 +332,13 @@ public class MainController implements Initializable, NMEAHandler {
         menuItem.setOnAction(ev -> {
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Track file");
-            File trackFile = fileChooser.showOpenDialog(mPrimaryStage);
-            if (trackFile != null) {
-
+            File logDir = new File(System.getProperty("user.dir"), "logs");
+            fileChooser.setInitialDirectory(logDir);
+            mTrackFile = fileChooser.showOpenDialog(mPrimaryStage);
+            if (mTrackFile != null) {
+                borderPane.setBottom(trackButtons);
+            } else {
+                borderPane.setBottom(null);
             }
         });
         mContextMenu.getItems().add(menuItem);
@@ -306,7 +351,6 @@ public class MainController implements Initializable, NMEAHandler {
         mGPSDot = new Circle();
         mGPSDot.setFill(Color.TRANSPARENT);
         mGPSDot.setRadius(10);
-        mGPSDot.setStroke(Color.BLACK);
         mGPSDot.setStrokeWidth(2);
 
         mRotate = new Rotate(-ROTATE_X_VALUE, Rotate.X_AXIS);
@@ -611,6 +655,10 @@ public class MainController implements Initializable, NMEAHandler {
         }
         mMapZeroX = mCenterPosX - mScene.getWidth() / 2;
         mMapZeroY = mCenterPosY - mScene.getHeight() / 2;
+
+        if (mTrackMode || mTrackReplayMode) {
+            calcGPSPos();
+        }
     }
 
     private void calcCenterCoord() {
@@ -730,16 +778,16 @@ public class MainController implements Initializable, NMEAHandler {
     }
 
     private void updateGPSPos(JsonObject gpsData) {
-        double lat = (double) gpsData.get("lat");
-        double lon = (double) gpsData.get("lon");
+        double lat = ((BigDecimal) gpsData.get("lat")).doubleValue();
+        double lon = ((BigDecimal) gpsData.get("lon")).doubleValue();
         if (lat == -1 || lon == -1) {
             return;
         }
         boolean hasMoved = false;
 
         if (mGPSData != null) {
-            if (lat != (double) mGPSData.get("lat") || lon != (double) mGPSData.get("lon")) {
-                int speed = (int) gpsData.get("speed");
+            if (lat != ((BigDecimal) mGPSData.get("lat")).doubleValue() || lon != ((BigDecimal) mGPSData.get("lon")).doubleValue()) {
+                int speed = ((BigDecimal) gpsData.get("speed")).intValue();
                 if (speed > 1) {
                     hasMoved = true;
                 }
@@ -748,13 +796,13 @@ public class MainController implements Initializable, NMEAHandler {
             hasMoved = true;
         }
 
-        if (hasMoved && mTrackMode) {
+        System.out.println(hasMoved + " " + mTrackReplayMode + " " + gpsData.toJson());
+        if (hasMoved && (mTrackMode || mTrackReplayMode)) {
             mGPSData = gpsData;
-            GPSUtils.addGPSData(mGPSData);
-
+            if (!mTrackReplayMode) {
+                GPSUtils.addGPSData(mGPSData);
+            }
             mGPSPos = new Point2D(lon, lat);
-            mMapGPSPos = new Point2D(getPixelXPosForLocationDeg(mGPSPos.getX()),
-                    getPixelYPosForLocationDeg(mGPSPos.getY()));
             moveToGPSPos();
         }
     }
@@ -763,17 +811,19 @@ public class MainController implements Initializable, NMEAHandler {
         if (mGPSData == null) {
             return;
         }
-        LogUtils.log("moveToGPSPos");
+        //LogUtils.log("moveToGPSPos " + mGPSPos);
         mCenterLat = mGPSPos.getY();
         mCenterLon = mGPSPos.getX();
-        int bearing = (int) mGPSData.get("bearing");
+        int bearing = ((BigDecimal) mGPSData.get("bearing")).intValue();
         if (bearing != -1) {
             mZRotate.setAngle(360 - bearing);
         }
 
         posLabel.setText(String.format("%.6f:%.6f", mCenterLon, mCenterLat));
-        int speed = (int) mGPSData.get("speed");
-        speedLabel.setText(String.valueOf(0));
+        int speed = ((BigDecimal) mGPSData.get("speed")).intValue();
+        speedLabel.setText(String.valueOf((int) (speed * 3.6)));
+        int alt = ((BigDecimal) mGPSData.get("altitude")).intValue();
+        altLabel.setText(String.valueOf(alt));
 
         calcMapCenterPos();
         calcMapZeroPos();
@@ -791,9 +841,15 @@ public class MainController implements Initializable, NMEAHandler {
     }
 
     private void addGPSDot() {
+        mGPSDot.setStroke(mTrackMode ? Color.BLACK : Color.RED);
+        mainPane.getChildren().add(mGPSDot);
+    }
+
+    private void calcGPSPos() {
+        mMapGPSPos = new Point2D(getPixelXPosForLocationDeg(mGPSPos.getX()),
+                getPixelYPosForLocationDeg(mGPSPos.getY()));
         mGPSDot.setCenterX(mMapGPSPos.getX() - mMapZeroX);
         mGPSDot.setCenterY(mMapGPSPos.getY() - mMapZeroY);
-        mainPane.getChildren().add(mGPSDot);
     }
 
     @Override

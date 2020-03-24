@@ -1,6 +1,7 @@
 package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonObject;
+import com.github.cliftonlabs.json_simple.Jsoner;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +46,7 @@ public class GPSUtils {
 
     public static void addGPSData(JsonObject gpsData) {
         if (sHandler != null) {
-            sLogger.log(Level.INFO, gpsData.toString());
+            sLogger.log(Level.INFO, Jsoner.serialize(gpsData));
         }
     }
 }
