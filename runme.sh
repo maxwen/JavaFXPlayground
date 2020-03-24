@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/sh
 
 JAVA_FX_HOME=/home/maxl/Downloads/javafx-sdk-13.0.2
 OSM_HOME=`pwd`

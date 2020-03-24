@@ -16,9 +16,12 @@
                     </font>
                 </Label>
                 <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
-                <Button fx:id="rotateLeftButton" minWidth="80.0" mnemonicParsing="false" text="[" />
-                <Button fx:id="rotateRightButton" minWidth="80.0" mnemonicParsing="false" text="]" />
                 <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="180.0" text=":">
+                    <font>
+                        <Font name="System Bold" size="14.0" />
+                    </font>
+                </Label>
+                <Label fx:id="speedLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0">
                     <font>
                         <Font name="System Bold" size="14.0" />
                     </font>

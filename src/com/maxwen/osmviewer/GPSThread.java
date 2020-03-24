@@ -67,6 +67,7 @@ public class GPSThread extends Thread {
     private void closePort() {
         if (port != null) {
             port.closePort();
+            port = null;
         }
     }
 }

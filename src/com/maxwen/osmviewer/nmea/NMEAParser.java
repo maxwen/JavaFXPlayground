@@ -100,24 +100,24 @@ public class NMEAParser implements BasicNMEAHandler {
         JsonObject gpsData = new JsonObject();
         gpsData.put("lat", this.lat);
         gpsData.put("lon", this.lon);
-        gpsData.put("speed", this.speed);
-        gpsData.put("bearing", this.bearing);
-        gpsData.put("altitude", this.altitude);
+        gpsData.put("speed", (int) this.speed);
+        gpsData.put("bearing", (int) this.bearing);
+        gpsData.put("altitude", (int) this.altitude);
         handler.onLocation(gpsData);
 
     }
 
     @Override
     public synchronized void onGGA(long time, double latitude, double longitude, float altitude, FixQuality quality, int satellites, float hdop) {
-        this.lat = latitude;
-        this.lon = longitude;
+        this.lat = Double.valueOf(String.format("%.6f", latitude));
+        this.lon = Double.valueOf(String.format("%.6f", longitude));
         this.altitude = altitude;
         JsonObject gpsData = new JsonObject();
         gpsData.put("lat", this.lat);
         gpsData.put("lon", this.lon);
-        gpsData.put("speed", this.speed);
-        gpsData.put("bearing", this.bearing);
-        gpsData.put("altitude", this.altitude);
+        gpsData.put("speed", (int) this.speed);
+        gpsData.put("bearing", (int) this.bearing);
+        gpsData.put("altitude", (int) this.altitude);
         handler.onLocation(gpsData);
     }
 

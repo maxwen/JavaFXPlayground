@@ -2,6 +2,7 @@ package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
+import com.maxwen.osmviewer.nmea.GpsSatellite;
 import com.maxwen.osmviewer.nmea.NMEAHandler;
 import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
@@ -20,15 +21,18 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.*;
 import javafx.scene.transform.Rotate;
+import javafx.stage.FileChooser;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.util.*;
 import java.util.List;
 
 public class MainController implements Initializable, NMEAHandler {
-    public static final int ROTATE_X_VALUE = 50;
+    public static final int ROTATE_X_VALUE = 55;
     public static final int PREFETCH_MARGIN_PIXEL = 800;
     @FXML
     Button quitButton;
@@ -36,14 +40,6 @@ public class MainController implements Initializable, NMEAHandler {
     Button zoomInButton;
     @FXML
     Button zoomOutButton;
-    @FXML
-    Button stepLeftButton;
-    @FXML
-    Button stepUpButton;
-    @FXML
-    Button stepDownButton;
-    @FXML
-    Button stepRightButton;
     @FXML
     Pane mainPane;
     @FXML
@@ -55,14 +51,11 @@ public class MainController implements Initializable, NMEAHandler {
     @FXML
     HBox buttons;
     @FXML
-    Button rotateLeftButton;
-    @FXML
-    Button rotateRightButton;
-    @FXML
     Button gpsPosButton;
     @FXML
     CheckBox trackModeButton;
-
+    @FXML
+    Label speedLabel;
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
     private int mMapZoom = 16;
@@ -90,7 +83,6 @@ public class MainController implements Initializable, NMEAHandler {
     private long mSelectdOSMId = -1;
     private Map<Long, JsonObject> mOSMObjects;
     private OSMShape mPressedShape;
-    private int mRotateAnggle;
     private Point2D mGPSPos = new Point2D(0, 0);
     private Circle mGPSDot;
     private JsonObject mGPSData;
@@ -141,33 +133,13 @@ public class MainController implements Initializable, NMEAHandler {
                     mSelectdShape.setSelected();
                     mSelectdOSMId = mSelectdShape.getOSMId();
 
-                    Task<Void> t = new Task<Void>() {
-                        @Override
-                        protected Void call() throws Exception {
-                            JsonObject osmObject = mOSMObjects.get(mSelectdOSMId);
-                            if (osmObject != null) {
-                                System.err.println(osmObject);
-                            }
-                            //Platform.runLater(() -> drawShapes());
-
-                            return null;
-                        }
-                    };
-                    t.stateProperty().addListener(new ChangeListener<Worker.State>() {
-                        @Override
-                        public void changed(ObservableValue<? extends Worker.State> observableValue, Worker.State oldState, Worker.State newState) {
-                            System.out.println(oldState + " -> " + newState);
-                            if (newState == Worker.State.SUCCEEDED) {
-                                drawShapes();
-                            }
+                    Platform.runLater(() -> {
+                        JsonObject osmObject = mOSMObjects.get(mSelectdOSMId);
+                        if (osmObject != null) {
+                            LogUtils.log(osmObject.toString());
                         }
                     });
-                    t.setOnFailed(e -> {
-                        Throwable exception = e.getSource().getException();
-                        if (exception != null) {
-                        }
-                    });
-                    new Thread(t).start();
+                    drawShapes();
                 }
             } else if (mouseEvent.getEventType() == MouseEvent.MOUSE_DRAGGED) {
                 if (mouseEvent.isPrimaryButtonDown()) {
@@ -199,12 +171,12 @@ public class MainController implements Initializable, NMEAHandler {
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        System.out.println("initialize");
+        LogUtils.log("initialize");
         init();
     }
 
     public void init() {
-        System.out.println("initialize");
+        LogUtils.log("initialize");
         mPolylines = new LinkedHashMap<>();
         mPolylines.put(TUNNEL_LAYER_LEVEL, new ArrayList<>());
         mPolylines.put(AREA_LAYER_LEVEL, new ArrayList<>());
@@ -243,22 +215,6 @@ public class MainController implements Initializable, NMEAHandler {
                 loadMapData();
             }
         });
-        rotateLeftButton.setOnAction(event -> {
-            int newAngle = mRotateAnggle - 15;
-            if (newAngle < 0) {
-                newAngle += 360;
-            }
-            mRotateAnggle = newAngle;
-            rotateMap();
-        });
-        rotateRightButton.setOnAction(event -> {
-            int newAngle = mRotateAnggle + 15;
-            if (newAngle >= 360) {
-                newAngle -= 360;
-            }
-            mRotateAnggle = newAngle;
-            rotateMap();
-        });
         gpsPosButton.setOnAction(event -> {
             moveToGPSPos();
         });
@@ -268,14 +224,22 @@ public class MainController implements Initializable, NMEAHandler {
                 mGPSData = null;
                 mGPSThread = new GPSThread();
                 if (!mGPSThread.startThread(MainController.this)) {
-                    System.err.println("open port " + GPSThread.DEV_TTY_ACM_0 + " failed");
+                    LogUtils.error("open port " + GPSThread.DEV_TTY_ACM_0 + " failed");
                     mMapGPSPos = new Point2D(0, 0);
+                } else {
+                    try {
+                        GPSUtils.startTrackLog();
+                    } catch (IOException e) {
+                        LogUtils.error("start GPS tracker failed", e);
+                    }
                 }
             } else {
                 if (mGPSThread != null) {
+                    GPSUtils.stopTrackLog();
                     mGPSThread.stopThread();
                     mMapGPSPos = new Point2D(0, 0);
                     mGPSData = null;
+                    mZRotate.setAngle(0);
                     drawShapes();
                 }
             }
@@ -323,6 +287,17 @@ public class MainController implements Initializable, NMEAHandler {
             }
         });
         mContextMenu.getItems().add(menuItem);
+        menuItem = new MenuItem(" Load track ");
+        menuItem.setOnAction(ev -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Track file");
+            File trackFile = fileChooser.showOpenDialog(mPrimaryStage);
+            if (trackFile != null) {
+
+            }
+        });
+        mContextMenu.getItems().add(menuItem);
+
         mainPane.setOnContextMenuRequested((ev) -> {
             mMapPos = new Point2D(ev.getX(), ev.getY());
             mContextMenu.show(mainPane, ev.getScreenX(), ev.getScreenY());
@@ -343,16 +318,13 @@ public class MainController implements Initializable, NMEAHandler {
 
     public void stop() {
         if (mGPSThread != null) {
+            GPSUtils.stopTrackLog();
             mGPSThread.stopThread();
             try {
                 mGPSThread.join();
             } catch (InterruptedException e) {
             }
         }
-    }
-
-    private void rotateMap() {
-        mZRotate.setAngle(mRotateAnggle);
     }
 
     protected void setStage(Stage primaryStage) {
@@ -466,24 +438,24 @@ public class MainController implements Initializable, NMEAHandler {
     public void loadMapData() {
         calcMapZeroPos();
         long t = System.currentTimeMillis();
-        System.out.println("loadMapData " + mMapZoom);
+        LogUtils.log("loadMapData " + mMapZoom);
         mOSMObjects.clear();
         for (List<Shape> polyList : mPolylines.values()) {
             polyList.clear();
         }
 
-        System.out.println(mCenterPosX + " : " + mCenterPosY);
-        System.out.println(mMapZeroX + " : " + mMapZeroY);
+        LogUtils.log(mCenterPosX + " : " + mCenterPosY);
+        LogUtils.log(mMapZeroX + " : " + mMapZeroY);
 
         mainPane.getChildren().clear();
         mVisibleBBox = getVisibleBBox();
-        System.out.println(mVisibleBBox);
+        LogUtils.log(mVisibleBBox.toString());
 
         mFetchBBox = getVisibleBBoxWithMargin(mVisibleBBox);
-        System.out.println(mFetchBBox);
+        LogUtils.log(mFetchBBox.toString());
 
         List<Double> bbox = getBBoxInDeg(mFetchBBox);
-        System.out.println(bbox);
+        LogUtils.log(bbox.toString());
 
         if (mMapZoom > 12) {
             JsonArray areas = DatabaseController.getInstance().getAreasInBboxWithGeom(bbox.get(0), bbox.get(1),
@@ -760,19 +732,26 @@ public class MainController implements Initializable, NMEAHandler {
     private void updateGPSPos(JsonObject gpsData) {
         double lat = (double) gpsData.get("lat");
         double lon = (double) gpsData.get("lon");
+        if (lat == -1 || lon == -1) {
+            return;
+        }
         boolean hasMoved = false;
 
         if (mGPSData != null) {
             if (lat != (double) mGPSData.get("lat") || lon != (double) mGPSData.get("lon")) {
-                hasMoved = true;
-                // TODO also use speed
+                int speed = (int) gpsData.get("speed");
+                if (speed > 1) {
+                    hasMoved = true;
+                }
             }
         } else {
             hasMoved = true;
         }
-        mGPSData = gpsData;
 
         if (hasMoved && mTrackMode) {
+            mGPSData = gpsData;
+            GPSUtils.addGPSData(mGPSData);
+
             mGPSPos = new Point2D(lon, lat);
             mMapGPSPos = new Point2D(getPixelXPosForLocationDeg(mGPSPos.getX()),
                     getPixelYPosForLocationDeg(mGPSPos.getY()));
@@ -784,15 +763,17 @@ public class MainController implements Initializable, NMEAHandler {
         if (mGPSData == null) {
             return;
         }
-        System.out.println("moveToGPSPos");
+        LogUtils.log("moveToGPSPos");
         mCenterLat = mGPSPos.getY();
         mCenterLon = mGPSPos.getX();
-        double bearing = (double) mGPSData.get("bearing");
+        int bearing = (int) mGPSData.get("bearing");
         if (bearing != -1) {
             mZRotate.setAngle(360 - bearing);
         }
 
         posLabel.setText(String.format("%.6f:%.6f", mCenterLon, mCenterLat));
+        int speed = (int) mGPSData.get("speed");
+        speedLabel.setText(String.valueOf(0));
 
         calcMapCenterPos();
         calcMapZeroPos();

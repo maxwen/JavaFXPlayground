@@ -34,7 +34,7 @@ public class DatabaseController {
 
     private DatabaseController() {
         mDBHome = System.getProperty("osm.db.path");
-        System.out.println("DatabaseController db home: " + mDBHome);
+        LogUtils.log("DatabaseController db home: " + mDBHome);
     }
 
     public boolean connextAll() {
@@ -48,7 +48,7 @@ public class DatabaseController {
             mConnected = true;
             return true;
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.error("connextAll", e);
             return false;
         }
     }
@@ -66,7 +66,7 @@ public class DatabaseController {
             mAdminConnection.close();
             mConnected = false;
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.error("disconnectAll", e);
         } catch (NullPointerException e) {
         }
     }
@@ -144,7 +144,7 @@ public class DatabaseController {
                         way.put("tags", Jsoner.deserialize(tags));
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
                 try {
                     String refs = rs.getString(3);
@@ -152,7 +152,7 @@ public class DatabaseController {
                         way.put("refs", Jsoner.deserialize(refs));
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
                 String poiList = rs.getString(8);
                 try {
@@ -160,7 +160,7 @@ public class DatabaseController {
                         way.put("poiList", Jsoner.deserialize(poiList));
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
 
                 controller.addToOSMCache(osmId, way);
@@ -191,10 +191,10 @@ public class DatabaseController {
 
                 count++;
             }
-            //System.out.println("getWaysInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //LogUtils.log("getWaysInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.log(e.getMessage());
         } finally {
             try {
                 if (stmt != null) {
@@ -222,7 +222,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
+            //LogUtils.log(withSimplify + " " + tolerance + " " + typeFilterList);
             if (typeFilterList != null && typeFilterList.size() != 0) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaTable WHERE ROWID IN (SELECT rowid FROM idx_areaTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
             } else {
@@ -250,7 +250,7 @@ public class DatabaseController {
                         area.put("tags", Jsoner.deserialize(tags));
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
                 controller.addToOSMCache(osmId, area);
                 areas.add(area);
@@ -278,10 +278,10 @@ public class DatabaseController {
                 count++;
             }
 
-            //System.out.println("getAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //LogUtils.log("getAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.log(e.getMessage());
         } finally {
             try {
                 if (stmt != null) {
@@ -309,7 +309,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterList);
+            //LogUtils.log(withSimplify + " " + tolerance + " " + typeFilterList);
 
             if (typeFilterList != null && typeFilterList.size() != 0) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, type, tags, layer, %s FROM areaLineTable WHERE ROWID IN (SELECT rowid FROM idx_areaLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND type IN %s ORDER BY layer", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, filterListToIn(typeFilterList)));
@@ -333,7 +333,7 @@ public class DatabaseController {
                         area.put("tags", tags);
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
                 controller.addToOSMCache(osmId, area);
                 areas.add(area);
@@ -364,10 +364,10 @@ public class DatabaseController {
                 OSMStyle.amendLineArea(area, polyline, controller.getZoom());
             }
 
-            //System.out.println("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //LogUtils.log("getLineAreasInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.log(e.getMessage());
         } finally {
             try {
                 if (stmt != null) {
@@ -395,7 +395,7 @@ public class DatabaseController {
             if (withSimplify) {
                 geom = String.format("AsText(Simplify(geom, %f))", tolerance);
             }
-            //System.out.println(withSimplify + " " + tolerance + " " + typeFilterString);
+            //LogUtils.log(withSimplify + " " + tolerance + " " + typeFilterString);
 
             if (typeFilterString != null) {
                 rs = stmt.executeQuery(String.format("SELECT osmId, adminLevel, %s FROM adminLineTable WHERE ROWID IN (SELECT rowid FROM idx_adminLineTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f)) AND adminLevel IN %s", geom, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax, typeFilterString));
@@ -415,10 +415,10 @@ public class DatabaseController {
                 count++;
             }
 
-            //System.out.println("getAdminLineInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //LogUtils.log("getAdminLineInBboxWithGeom " + count + " " + (System.currentTimeMillis() - t));
 
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.log(e.getMessage());
         } finally {
             try {
                 if (stmt != null) {
@@ -457,15 +457,15 @@ public class DatabaseController {
                         area.put("tags", tags);
                     }
                 } catch (JsonException e) {
-                    System.out.println(e.getMessage());
+                    LogUtils.log(e.getMessage());
                 }
                 adminAreas.add(area);
                 count++;
             }
 
-            //System.out.println("getAdminAreasOnPointWithGeom " + count + " " + (System.currentTimeMillis() - t));
+            //LogUtils.log("getAdminAreasOnPointWithGeom " + count + " " + (System.currentTimeMillis() - t));
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            LogUtils.log(e.getMessage());
         } finally {
             try {
                 if (stmt != null) {
