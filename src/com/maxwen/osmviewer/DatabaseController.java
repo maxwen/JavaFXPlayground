@@ -10,8 +10,7 @@ import javafx.scene.shape.Shape;
 import org.sqlite.SQLiteConfig;
 
 import java.sql.*;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class DatabaseController {
 
@@ -41,10 +40,10 @@ public class DatabaseController {
         try {
             mEdgeConnection = connect("jdbc:sqlite:" + mDBHome + "/edge.db");
             mAreaConnection = connect("jdbc:sqlite:" + mDBHome + "/area.db");
-            mAddressConnection = connect("jdbc:sqlite:"  + mDBHome + "adress.db");
+            mAddressConnection = connect("jdbc:sqlite:" + mDBHome + "adress.db");
             mWaysConnection = connect("jdbc:sqlite:" + mDBHome + "/ways.db");
-            mNodeConnection = connect("jdbc:sqlite:"  + mDBHome + "/nodes.db");
-            mAdminConnection = connect("jdbc:sqlite:"  + mDBHome + "/admin.db");
+            mNodeConnection = connect("jdbc:sqlite:" + mDBHome + "/nodes.db");
+            mAdminConnection = connect("jdbc:sqlite:" + mDBHome + "/admin.db");
             mConnected = true;
             return true;
         } catch (SQLException e) {
@@ -119,7 +118,7 @@ public class DatabaseController {
             while (rs.next()) {
                 JsonObject way = new JsonObject();
                 long osmId = rs.getLong(1);
-                way.put("id", osmId);
+                way.put("osmId", osmId);
                 way.put("name", rs.getString(5));
                 way.put("nameRef", rs.getString(6));
                 int layer = rs.getInt(9);
@@ -342,7 +341,7 @@ public class DatabaseController {
                 Polyline polyline = controller.displayCoordsPolyline(osmId, createCoordsFromLineString(rs.getString(5)));
                 if (areaType == OSMUtils.AREA_TYPE_RAILWAY && tags != null) {
                     Object isRailway = tags.get("railway");
-                    Object isTunnel =  tags.get("tunnel");
+                    Object isTunnel = tags.get("tunnel");
                     Object isBridge = tags.get("bridge");
                     if (isRailway != null && isRailway.equals("rail")) {
                         if (isBridge != null && isBridge.equals("yes")) {
@@ -431,7 +430,7 @@ public class DatabaseController {
     }
 
     public JsonArray getAdminAreasOnPointWithGeom(double lon, double lat, double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax,
-                                                String adminLevelList, MainController controller) {
+                                                  String adminLevelList, MainController controller) {
         Statement stmt = null;
         JsonArray adminAreas = new JsonArray();
         try {
@@ -446,7 +445,7 @@ public class DatabaseController {
             int count = 0;
             while (rs.next()) {
                 JsonObject area = new JsonObject();
-                area.put("osmId", rs.getInt(1));
+                area.put("osmId", rs.getLong(1));
                 int adminLevel = rs.getInt(3);
                 area.put("adminLevel", adminLevel);
                 JsonObject tags = null;
@@ -475,6 +474,99 @@ public class DatabaseController {
             }
         }
         return adminAreas;
+    }
+
+    public Map<Long, JsonObject> getEdgesAroundPointWithGeom(double lonRangeMin, double latRangeMin, double lonRangeMax, double latRangeMax) {
+        Statement stmt = null;
+        Map<Long, JsonObject> edgeMap= new HashMap<>();
+        try {
+            stmt = mEdgeConnection.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format("SELECT id, startRef, endRef, length, wayId, source, target, cost, reverseCost, streetInfo, AsText(geom) FROM edgeTable WHERE ROWID IN (SELECT rowid FROM idx_edgeTable_geom WHERE rowid MATCH RTreeIntersects(%f, %f, %f, %f))", lonRangeMin, latRangeMin, lonRangeMax, latRangeMax));
+
+            int count = 0;
+            while (rs.next()) {
+                JsonObject edge = new JsonObject();
+                edge.put("edgeId", rs.getLong(1));
+                edge.put("osmId", rs.getLong(5));
+                edge.put("startRef", rs.getLong(2));
+                edge.put("endRef", rs.getLong(3));
+                edge.put("coords", createCoordsFromLineString(rs.getString(11)));
+                edgeMap.put(rs.getLong(1), edge);
+                count++;
+            }
+        } catch (SQLException e) {
+            LogUtils.log(e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return edgeMap;
+    }
+
+    public JsonObject getEdgeOnPos(double lon, double lat, double margin, int maxDistance) {
+        List<Double> bbox = createBBoxAroundPoint(lon, lat, margin);
+        Map<Long, JsonObject> edgeMap = DatabaseController.getInstance().getEdgesAroundPointWithGeom(bbox.get(0), bbox.get(1), bbox.get(2), bbox.get(3));
+        int minDistance = maxDistance;
+        JsonObject selectedEdge = null;
+        for (JsonObject edge : edgeMap.values()) {
+            JsonArray coords = (JsonArray) edge.get("coords");
+
+            JsonArray coord = (JsonArray) coords.get(0);
+            double lon1 = coord.getDouble(0);
+            double lat1 = coord.getDouble(1);
+
+            for (int j = 1; j < coords.size(); j++) {
+                coord = (JsonArray) coords.get(j);
+                double lon2 = coord.getDouble(0);
+                double lat2 = coord.getDouble(1);
+
+                int distance = GISUtils.isMinimalDistanceOnLineBetweenPoints(lon, lat, lon1, lat1, lon2, lat2, maxDistance);
+                if (distance != -1 && distance < minDistance) {
+                    minDistance = distance;
+                    selectedEdge = edge;
+                }
+            }
+        }
+        return selectedEdge;
+
+    }
+
+    public JsonArray getEdgesWithStartOrEndRef(long ref1, long ref2) {
+        Statement stmt = null;
+        JsonArray edgeList = new JsonArray();
+        try {
+            stmt = mEdgeConnection.createStatement();
+            ResultSet rs = null;
+            if (ref2 != -1) {
+                rs = stmt.executeQuery(String.format("SELECT id, startRef, endRef, length, wayId, source, target, cost, reverseCost, streetInfo, AsText(geom) FROM edgeTable WHERE startRef=%d OR endRef=%d OR startRef=%d OR endRef=%d", ref1, ref1, ref2, ref2));
+            } else {
+                rs = stmt.executeQuery(String.format("SELECT id, startRef, endRef, length, wayId, source, target, cost, reverseCost, streetInfo, AsText(geom) FROM edgeTable WHERE startRef=%d OR endRef=%d", ref1, ref1));
+            }
+            int count = 0;
+            while (rs.next()) {
+                JsonObject edge = new JsonObject();
+                edge.put("edgeId", rs.getLong(1));
+                edge.put("osmId", rs.getLong(5));
+                edge.put("startRef", rs.getLong(2));
+                edge.put("endRef", rs.getLong(3));
+                edgeList.add(edge);
+                count++;
+            }
+        } catch (Exception e) {
+            LogUtils.error("getEdgesWithStartOrEndRef", e);
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return edgeList;
     }
 
     private JsonArray createCoordsFromLineString(String lineString) {
@@ -523,5 +615,15 @@ public class DatabaseController {
             return createCoordsFromMultiPolygon(coordsStr.substring("POLYGON((".length(), coordsStr.length() - 2));
         }
         return new JsonArray();
+    }
+
+    private List<Double> createBBoxAroundPoint(double lon, double lat, double margin) {
+        List<Double> bbox = new ArrayList<>();
+        double latRangeMax = lat + margin;
+        double lonRangeMax = lon + margin * 1.4;
+        double latRangeMin = lat - margin;
+        double lonRangeMin = lon - margin * 1.4;
+        Collections.addAll(bbox, lonRangeMin, latRangeMin, lonRangeMax, latRangeMax);
+        return bbox;
     }
 }

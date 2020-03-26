@@ -1,5 +1,7 @@
 package com.maxwen.osmviewer;
 
+import com.github.cliftonlabs.json_simple.JsonObject;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -44,4 +46,24 @@ public class OSMUtils {
             .collect(Collectors.toCollection(HashSet::new));
 
     //Set.of("water", "riverbank", "wetland", "marsh", "mud");
+
+    public static boolean isValidOnewayEnter(int oneway, long crossingRef, JsonObject edge) {
+
+        long startRef = (long) edge.get("startRef");
+        long endRef = (long) edge.get("endRef");
+
+        if (crossingRef != startRef && crossingRef != endRef) {
+            return true;
+        }
+        if (oneway == 1) {
+            if (crossingRef == startRef) {
+                return true;
+            }
+        } else if (oneway == 2) {
+            if (crossingRef == endRef) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

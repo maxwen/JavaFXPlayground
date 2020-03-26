@@ -25,10 +25,10 @@ public class LogUtils {
     }
 
     public static void error(String message, Exception e) {
-        sLogger.log(Level.WARNING, message, e);
+        sLogger.log(Level.SEVERE, message + ":" + e.toString(), e);
     }
 
     public static void error(String message) {
-        sLogger.log(Level.WARNING, message);
+        sLogger.log(Level.SEVERE, message);
     }
 }

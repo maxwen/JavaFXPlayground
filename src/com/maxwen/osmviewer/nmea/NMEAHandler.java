@@ -10,6 +10,9 @@ public interface NMEAHandler {
 
     void onLocation(JsonObject gpsData);
 
+    default void onLocation(JsonObject gpsData, boolean force) {
+    }
+
     default void onSatellites(List<GpsSatellite> satellites) {
     }
 

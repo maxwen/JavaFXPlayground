@@ -29,7 +29,7 @@ public class OSMPolyline extends Polyline implements OSMShape {
 
     @Override
     public void setSelected() {
-        setStroke(Color.RED);
+        setStroke(Color.rgb(255, 0, 0, 0.5));
     }
 
     @Override

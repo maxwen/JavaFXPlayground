@@ -71,7 +71,7 @@ public class MainController implements Initializable, NMEAHandler {
 
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
-    private int mMapZoom = 16;
+    private int mMapZoom = 17;
     private double mMapZeroX;
     private double mMapZeroY;
     private double mCenterLat = 47.793938;
@@ -102,6 +102,7 @@ public class MainController implements Initializable, NMEAHandler {
     private boolean mTrackMode;
     private GPSThread mGPSThread;
     private boolean mTrackReplayMode;
+    private Set<Long> mPredictionWays = new HashSet<>();
 
     public static final int TUNNEL_LAYER_LEVEL = -1;
     public static final int AREA_LAYER_LEVEL = 0;
@@ -183,7 +184,9 @@ public class MainController implements Initializable, NMEAHandler {
     private ContextMenu mContextMenu;
     private Point2D mMapGPSPos;
     private TrackReplayThread mTrackReplayThread;
-    private File mTrackFile;
+    private JsonObject mCurrentEdge;
+    private JsonArray mNextEdgeList;
+    private long mNextRefId;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -262,10 +265,8 @@ public class MainController implements Initializable, NMEAHandler {
         });
 
         startReplayButton.setOnAction(event -> {
-            if (mTrackFile != null) {
-                mTrackReplayThread = new TrackReplayThread();
-                mTrackReplayMode = true;
-                mTrackReplayThread.startThread(mTrackFile, this);
+            if (mTrackReplayThread != null) {
+                mTrackReplayThread.startThread();
             }
         });
         stopReplayButton.setOnAction(event -> {
@@ -334,9 +335,26 @@ public class MainController implements Initializable, NMEAHandler {
             fileChooser.setTitle("Track file");
             File logDir = new File(System.getProperty("user.dir"), "logs");
             fileChooser.setInitialDirectory(logDir);
-            mTrackFile = fileChooser.showOpenDialog(mPrimaryStage);
-            if (mTrackFile != null) {
+            File trackFile = fileChooser.showOpenDialog(mPrimaryStage);
+            if (trackFile != null) {
                 borderPane.setBottom(trackButtons);
+                if (mTrackReplayThread != null) {
+                    mTrackReplayMode = false;
+                    mTrackReplayThread.stopThread();
+                    try {
+                        mTrackReplayThread.join();
+                    } catch (InterruptedException e) {
+                    }
+                    mTrackReplayThread = null;
+                }
+                mTrackReplayThread = new TrackReplayThread();
+                mTrackReplayMode = true;
+                if (!mTrackReplayThread.setupReplay(trackFile, this)) {
+                    LogUtils.error("failed to setup replay thread");
+                    mTrackReplayThread = null;
+                    mTrackReplayMode = false;
+                    borderPane.setBottom(null);
+                }
             } else {
                 borderPane.setBottom(null);
             }
@@ -533,9 +551,20 @@ public class MainController implements Initializable, NMEAHandler {
         if (mSelectdShape != null) {
             mainPane.getChildren().add(mSelectdShape.getShape());
         }
-
         if (isPositionVisible(mMapGPSPos)) {
             addGPSDot();
+        }
+        if (mTrackMode || mTrackReplayMode) {
+            if (mPredictionWays.size() != 0) {
+                for (Long osmId : mPredictionWays) {
+                    OSMShape s = findShapeOfOSMId(osmId);
+                    if (s != null) {
+                        s.getShape().setStrokeWidth(2);
+                        s.getShape().setStroke(Color.GREEN);
+                        mainPane.getChildren().add(s.getShape());
+                    }
+                }
+            }
         }
     }
 
@@ -561,6 +590,18 @@ public class MainController implements Initializable, NMEAHandler {
         }
         if (isPositionVisible(mMapGPSPos)) {
             addGPSDot();
+        }
+        if (mTrackMode || mTrackReplayMode) {
+            if (mPredictionWays.size() != 0) {
+                for (Long osmId : mPredictionWays) {
+                    OSMShape s = findShapeOfOSMId(osmId);
+                    if (s != null) {
+                        s.getShape().setStrokeWidth(2);
+                        s.getShape().setStroke(Color.GREEN);
+                        mainPane.getChildren().add(s.getShape());
+                    }
+                }
+            }
         }
     }
 
@@ -745,8 +786,7 @@ public class MainController implements Initializable, NMEAHandler {
                         polygon.setTranslateY(-mMapZeroY);
                         return polygon;
                     }
-                }
-                if (s instanceof OSMPolyline) {
+                } else if (s instanceof OSMPolyline) {
                     if (s.contains(pos)) {
                         OSMPolyline polyline = new OSMPolyline(((OSMPolyline) s).getOSMId(), (OSMPolyline) s);
                         polyline.getPoints().addAll(((OSMPolyline) s).getPoints());
@@ -771,13 +811,21 @@ public class MainController implements Initializable, NMEAHandler {
                         polygon.setTranslateY(-mMapZeroY);
                         return polygon;
                     }
+                } else if (s instanceof OSMPolyline) {
+                    if (((OSMPolyline) s).getOSMId() == osmId) {
+                        OSMPolyline polyline = new OSMPolyline(((OSMPolyline) s).getOSMId(), (OSMPolyline) s);
+                        polyline.getPoints().addAll(((OSMPolyline) s).getPoints());
+                        polyline.setTranslateX(-mMapZeroX);
+                        polyline.setTranslateY(-mMapZeroY);
+                        return polyline;
+                    }
                 }
             }
         }
         return null;
     }
 
-    private void updateGPSPos(JsonObject gpsData) {
+    private void updateGPSPos(JsonObject gpsData, boolean force) {
         double lat = ((BigDecimal) gpsData.get("lat")).doubleValue();
         double lon = ((BigDecimal) gpsData.get("lon")).doubleValue();
         if (lat == -1 || lon == -1) {
@@ -796,8 +844,9 @@ public class MainController implements Initializable, NMEAHandler {
             hasMoved = true;
         }
 
-        System.out.println(hasMoved + " " + mTrackReplayMode + " " + gpsData.toJson());
-        if (hasMoved && (mTrackMode || mTrackReplayMode)) {
+
+        //System.out.println(hasMoved + " " + mTrackReplayMode + " " + gpsData.toJson());
+        if ((force || hasMoved) && (mTrackMode || mTrackReplayMode)) {
             mGPSData = gpsData;
             if (!mTrackReplayMode) {
                 GPSUtils.addGPSData(mGPSData);
@@ -834,6 +883,159 @@ public class MainController implements Initializable, NMEAHandler {
         } else {
             drawShapes();
         }
+
+        Task<Void> findEdge = new Task() {
+            @Override
+            protected Object call() throws Exception {
+                boolean foundEdge = false;
+                long t = System.currentTimeMillis();
+
+                if (mCurrentEdge == null) {
+                    System.err.println("search nearest edge");
+                    JsonObject edge = DatabaseController.getInstance().getEdgeOnPos(mGPSPos.getX(), mGPSPos.getY(), 0.0005, 30);
+                    if (edge != null) {
+                        mCurrentEdge = edge;
+                        mNextRefId = 0;
+                        long currStartRef = (long) mCurrentEdge.get("startRef");
+                        long currEndRef = (long) mCurrentEdge.get("endRef");
+                        JsonArray nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(currStartRef, currEndRef);
+                        calPredicationWays(nextEdgeList);
+                        foundEdge = true;
+                    }
+                } else {
+                    List<Double> bbox = createBBoxAroundPoint(mGPSPos.getX(), mGPSPos.getY(), 0.00005);
+                    Map<Long, JsonObject> edgeMap = DatabaseController.getInstance().getEdgesAroundPointWithGeom(bbox.get(0), bbox.get(1), bbox.get(2), bbox.get(3));
+
+                    boolean searchNextEdge = true;
+                    if (mCurrentEdge != null) {
+                        long currentEdgeId = (long) mCurrentEdge.get("edgeId");
+                        if (edgeMap.containsKey(currentEdgeId)) {
+                            System.err.println("prefer current edge");
+                            searchNextEdge = false;
+                            foundEdge = true;
+                        }
+                    }
+                    if (searchNextEdge) {
+                        for (JsonObject edge : edgeMap.values()) {
+                            long edgeId = (long) edge.get("edgeId");
+
+                            if (mCurrentEdge != null) {
+                                long currentEdgeId = (long) mCurrentEdge.get("edgeId");
+                                if (edgeId == currentEdgeId) {
+                                    continue;
+                                }
+
+                                boolean foundNext = false;
+                                for (int j = 0; j < mNextEdgeList.size(); j++) {
+                                    JsonObject nextEdge = (JsonObject) mNextEdgeList.get(j);
+                                    long nextEdgeId = (long) nextEdge.get("edgeId");
+                                    if (nextEdgeId == edgeId) {
+                                        System.err.println("found matching next edge: " + nextEdge);
+                                        foundNext = true;
+                                        break;
+                                    }
+                                }
+                                if (!foundNext) {
+                                    continue;
+                                }
+                            }
+
+                            long nextStartRef = (long) edge.get("startRef");
+                            long nextEndRef = (long) edge.get("endRef");
+
+                            mNextRefId = 0;
+                            if (mCurrentEdge != null) {
+                                long currStartRef = (long) mCurrentEdge.get("startRef");
+                                long currEndRef = (long) mCurrentEdge.get("endRef");
+
+                                if (nextStartRef == currEndRef || nextStartRef == currStartRef) {
+                                    mNextRefId = nextEndRef;
+                                } else if (nextEndRef == currEndRef || nextEndRef == currStartRef) {
+                                    mNextRefId = nextStartRef;
+                                }
+                            }
+                            mCurrentEdge = edge;
+
+                            JsonArray nextEdgeList = null;
+                            if (mNextRefId != 0) {
+                                nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(mNextRefId, -1);
+                            } else {
+                                nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(nextStartRef, nextEndRef);
+                            }
+                            calPredicationWays(nextEdgeList);
+                            foundEdge = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!foundEdge || mCurrentEdge == null) {
+                    System.err.println("no matching next edge found");
+                    mCurrentEdge = null;
+                    mSelectdShape = null;
+                    mSelectdOSMId = -1;
+                } else {
+                    if (mCurrentEdge != null) {
+                        long osmId = (long) mCurrentEdge.get("osmId");
+                        OSMShape shape = findShapeOfOSMId(osmId);
+                        if (shape != null) {
+                            mSelectdOSMId = osmId;
+                            mSelectdShape = shape;
+                            mSelectdShape.setSelected();
+                        }
+                    }
+                }
+                System.err.println("findEdge: " + (System.currentTimeMillis() - t));
+
+                return null;
+            }
+        };
+
+        new Thread(findEdge).start();
+    }
+
+    //TODO order based on probability
+    private void calPredicationWays(JsonArray nextEdgeList) {
+        mPredictionWays.clear();
+        mNextEdgeList = new JsonArray();
+        if (mCurrentEdge == null) {
+            return;
+        }
+        long currentEdgeId = (long) mCurrentEdge.get("edgeId");
+        for (int j = 0; j < nextEdgeList.size(); j++) {
+            JsonObject nextEdge = (JsonObject) nextEdgeList.get(j);
+            long predictionWayId = (long) nextEdge.get("osmId");
+            long predictionEdgeId = (long) nextEdge.get("edgeId");
+            if (predictionEdgeId == currentEdgeId) {
+                continue;
+            }
+            JsonObject way = mOSMObjects.get(predictionWayId);
+            if (way != null) {
+                if (mNextRefId != 0) {
+                    int streetInfo = (int) way.get("streetInfo");
+                    int oneway = (streetInfo & 63) >> 4;
+                    int roundabout = (streetInfo & 127) >> 6;
+
+                    if (oneway != 0) {
+                        if (!OSMUtils.isValidOnewayEnter(oneway, mNextRefId, nextEdge)) {
+                            System.err.println("forbidden oneway enter " + nextEdge);
+                            continue;
+                        }
+                    }
+                    if (roundabout != 0) {
+                        long startRef = (long) nextEdge.get("startRef");
+                        if (mNextRefId != startRef) {
+                            System.err.println("forbidden roundabout left turn " + nextEdge);
+                            continue;
+                        }
+                    }
+                }
+                mPredictionWays.add((long) nextEdge.get("osmId"));
+                mNextEdgeList.add(nextEdge);
+            }
+        }
+        System.err.println("calPredicationWays currentEdge = " + currentEdgeId + " nextEdgeList = " + mNextEdgeList);
+
     }
 
     private boolean isPositionVisible(Point2D mapPos) {
@@ -857,7 +1059,17 @@ public class MainController implements Initializable, NMEAHandler {
         Platform.runLater(new Runnable() {
             @Override
             public void run() {
-                updateGPSPos(gpsData);
+                updateGPSPos(gpsData, false);
+            }
+        });
+    }
+
+    @Override
+    public void onLocation(JsonObject gpsData, boolean force) {
+        Platform.runLater(new Runnable() {
+            @Override
+            public void run() {
+                updateGPSPos(gpsData, force);
             }
         });
     }

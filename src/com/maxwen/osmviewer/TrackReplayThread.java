@@ -61,16 +61,51 @@ public class TrackReplayThread extends Thread {
         super(t);
     }
 
-    public boolean startThread(File trackFile, NMEAHandler handler) {
-        if (!trackFile.exists()) {
+    public boolean startThread() {
+        if (mTrackFile == null || mHandler == null) {
             return false;
         }
-        mTrackFile = trackFile;
-        mHandler = handler;
+        if (!mTrackFile.exists()) {
+            return false;
+        }
         mStopThread = false;
-        mPauseThread= false;
+        mPauseThread = false;
         start();
         return true;
+    }
+
+    public boolean setupReplay(File trackFile, NMEAHandler handler) {
+        mTrackFile = trackFile;
+        mHandler = handler;
+
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new FileReader(mTrackFile));
+        } catch (FileNotFoundException e) {
+            LogUtils.error("TrackReplayThread setupReplay", e);
+            return false;
+        }
+        try {
+            String line = reader.readLine();
+            if (line != null) {
+                String[] parts = line.split("\\|");
+                if (parts.length == 2) {
+                    String gpsPart = parts[1];
+                    JsonObject gpsData = (JsonObject) Jsoner.deserialize(gpsPart);
+                    mHandler.onLocation(gpsData, true);
+                    return true;
+                }
+            }
+            reader.close();
+        } catch (Exception e) {
+            LogUtils.error("TrackReplayThread setupReplay", e);
+        } finally {
+            try {
+                reader.close();
+            } catch (IOException e) {
+            }
+        }
+        return false;
     }
 
     public void stopThread() {

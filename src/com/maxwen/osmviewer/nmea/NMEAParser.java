@@ -100,8 +100,8 @@ public class NMEAParser implements BasicNMEAHandler {
         this.speed = speed;
         this.bearing = direction;
         JsonObject gpsData = new JsonObject();
-        gpsData.put("lat", new BigDecimal(this.lat));
-        gpsData.put("lon", new BigDecimal(this.lon));
+        gpsData.put("lat", new BigDecimal((float) this.lat));
+        gpsData.put("lon", new BigDecimal((float) this.lon));
         gpsData.put("speed", new BigDecimal((int) this.speed));
         gpsData.put("bearing", new BigDecimal((int) this.bearing));
         gpsData.put("altitude", new BigDecimal((int) this.altitude));
@@ -115,8 +115,8 @@ public class NMEAParser implements BasicNMEAHandler {
         this.lon = longitude;
         this.altitude = altitude;
         JsonObject gpsData = new JsonObject();
-        gpsData.put("lat", new BigDecimal(this.lat));
-        gpsData.put("lon", new BigDecimal(this.lon));
+        gpsData.put("lat", new BigDecimal((float) this.lat));
+        gpsData.put("lon", new BigDecimal((float) this.lon));
         gpsData.put("speed", new BigDecimal((int) this.speed));
         gpsData.put("bearing", new BigDecimal((int) this.bearing));
         gpsData.put("altitude", new BigDecimal((int) this.altitude));
