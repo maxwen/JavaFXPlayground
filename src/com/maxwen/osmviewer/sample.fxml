@@ -9,40 +9,40 @@
         <HBox fx:id="buttons" prefHeight="27.0">
             <children>
                 <Pane HBox.hgrow="ALWAYS" />
-                <Button fx:id="zoomInButton" minWidth="80.0" mnemonicParsing="false" text="+" />
-                <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0" text="-">
+                <Button fx:id="zoomInButton" contentDisplay="CENTER" mnemonicParsing="false" />
+                <Label fx:id="zoomLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="60.0" minWidth="60.0" text="-" HBox.hgrow="ALWAYS">
                     <font>
                         <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
-                <Button fx:id="zoomOutButton" minWidth="80.0" mnemonicParsing="false" text="-" />
-                <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="180.0" text=":">
+                <Button fx:id="zoomOutButton" mnemonicParsing="false" />
+                <Label fx:id="posLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="60.0" minWidth="250.0" text=":" HBox.hgrow="ALWAYS">
                     <font>
                         <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
-                <Label fx:id="altLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0">
+                <Label fx:id="altLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="60.0" minWidth="60.0" HBox.hgrow="ALWAYS">
                     <font>
                         <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
-                <Label fx:id="speedLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="25.0" minWidth="60.0">
+                <Label fx:id="speedLabel" alignment="CENTER" contentDisplay="CENTER" minHeight="60.0" minWidth="60.0" HBox.hgrow="ALWAYS">
                     <font>
                         <Font name="System Bold" size="20.0" />
                     </font>
                 </Label>
-                <Button fx:id="gpsPosButton" minWidth="80.0" mnemonicParsing="false" text="GPS" />
-                <CheckBox fx:id="trackModeButton" minHeight="-Infinity" mnemonicParsing="false" prefHeight="27.0" text="Track" />
-                <Button fx:id="quitButton" minWidth="80.0" mnemonicParsing="false" text="Quit" />
+                <ToggleButton fx:id="trackModeButton" mnemonicParsing="false" />
+                <Button fx:id="quitButton" mnemonicParsing="false" />
                 <Pane HBox.hgrow="ALWAYS" />
             </children>
         </HBox>
         <HBox fx:id="trackButtons" prefHeight="27.0">
             <children>
                 <Pane HBox.hgrow="ALWAYS" />
-                <Button fx:id="startReplayButton" minWidth="80.0" mnemonicParsing="false" text=">" />
-                <Button fx:id="pauseReplayButton" minWidth="80.0" mnemonicParsing="false" text="||" />
-                <Button fx:id="stopReplayButton" minWidth="80.0" mnemonicParsing="false" text="o" />
+                <Button fx:id="startReplayButton" mnemonicParsing="false" />
+                <Button fx:id="pauseReplayButton" mnemonicParsing="false" />
+                <Button fx:id="stepReplayButton" mnemonicParsing="false" />
+                <Button fx:id="stopReplayButton" mnemonicParsing="false" />
                 <Pane HBox.hgrow="ALWAYS" />
             </children>
         </HBox>

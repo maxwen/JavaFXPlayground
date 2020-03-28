@@ -12,6 +12,9 @@ import java.io.*;
 public class TrackReplayThread extends Thread {
     private static boolean mStopThread;
     private static boolean mPauseThread;
+    private static boolean mStepThread;
+    private static boolean mStartThread;
+
     private static File mTrackFile;
     private static NMEAHandler mHandler;
     private static Runnable t = new Runnable() {
@@ -41,6 +44,10 @@ public class TrackReplayThread extends Thread {
                                 while (mPauseThread) {
                                     Thread.sleep(1000);
                                 }
+                                if (mStepThread) {
+                                    mPauseThread = true;
+                                    mStepThread = false;
+                                }
                             } else {
                                 Thread.sleep(1000);
                             }
@@ -62,6 +69,10 @@ public class TrackReplayThread extends Thread {
     }
 
     public boolean startThread() {
+        if (mStartThread) {
+            pauseThread();
+            return true;
+        }
         if (mTrackFile == null || mHandler == null) {
             return false;
         }
@@ -70,6 +81,8 @@ public class TrackReplayThread extends Thread {
         }
         mStopThread = false;
         mPauseThread = false;
+        mStepThread = false;
+        mStartThread = true;
         start();
         return true;
     }
@@ -110,9 +123,19 @@ public class TrackReplayThread extends Thread {
 
     public void stopThread() {
         mStopThread = true;
+        mPauseThread = false;
+        mStepThread = false;
+        mStartThread = false;
     }
 
     public void pauseThread() {
         mPauseThread = !mPauseThread;
+    }
+
+    public void stepThread() {
+        if (mPauseThread) {
+            mStepThread = true;
+            mPauseThread = false;
+        }
     }
 }

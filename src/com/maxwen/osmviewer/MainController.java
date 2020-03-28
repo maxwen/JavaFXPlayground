@@ -2,20 +2,17 @@ package com.maxwen.osmviewer;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonObject;
-import com.github.cliftonlabs.json_simple.Jsoner;
-import com.maxwen.osmviewer.nmea.GpsSatellite;
 import com.maxwen.osmviewer.nmea.NMEAHandler;
 import javafx.application.Platform;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.concurrent.Task;
-import javafx.concurrent.Worker;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.geometry.*;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
@@ -53,9 +50,7 @@ public class MainController implements Initializable, NMEAHandler {
     @FXML
     HBox buttons;
     @FXML
-    Button gpsPosButton;
-    @FXML
-    CheckBox trackModeButton;
+    ToggleButton trackModeButton;
     @FXML
     Label speedLabel;
     @FXML
@@ -68,6 +63,8 @@ public class MainController implements Initializable, NMEAHandler {
     Button pauseReplayButton;
     @FXML
     HBox trackButtons;
+    @FXML
+    Button stepReplayButton;
 
     private static final int MIN_ZOOM = 10;
     private static final int MAX_ZOOM = 20;
@@ -187,6 +184,7 @@ public class MainController implements Initializable, NMEAHandler {
     private JsonObject mCurrentEdge;
     private JsonArray mNextEdgeList;
     private long mNextRefId;
+    private File mCurrentTrackFile;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -207,9 +205,11 @@ public class MainController implements Initializable, NMEAHandler {
         mOSMObjects = new HashMap<>();
         calcMapCenterPos();
 
+        quitButton.setGraphic(new ImageView(new Image("/images/quit.png")));
         quitButton.setOnAction(e -> {
             Platform.exit();
         });
+        zoomInButton.setGraphic(new ImageView(new Image("/images/plus.png")));
         zoomInButton.setOnAction(e -> {
             int zoom = mMapZoom + 1;
             zoom = Math.min(MAX_ZOOM, zoom);
@@ -220,6 +220,7 @@ public class MainController implements Initializable, NMEAHandler {
                 loadMapData();
             }
         });
+        zoomOutButton.setGraphic(new ImageView(new Image("/images/minus.png")));
         zoomOutButton.setOnAction(e -> {
             int zoom = mMapZoom - 1;
             zoom = Math.max(MIN_ZOOM, zoom);
@@ -234,55 +235,67 @@ public class MainController implements Initializable, NMEAHandler {
                 loadMapData();
             }
         });
-        gpsPosButton.setOnAction(event -> {
-            moveToGPSPos();
-        });
+
+        trackModeButton.setGraphic(new ImageView(new Image(mTrackMode ? "/images/gps.png" : "/images/gps-circle.png")));
         trackModeButton.setOnAction(event -> {
             mTrackMode = trackModeButton.isSelected();
-            if (mTrackMode) {
-                mGPSData = null;
-                mGPSThread = new GPSThread();
-                if (!mGPSThread.startThread(MainController.this)) {
-                    LogUtils.error("open port " + GPSThread.DEV_TTY_ACM_0 + " failed");
-                    mMapGPSPos = new Point2D(0, 0);
-                } else {
-                    try {
-                        GPSUtils.startTrackLog();
-                    } catch (IOException e) {
-                        LogUtils.error("start GPS tracker failed", e);
-                    }
-                }
-            } else {
-                if (mGPSThread != null) {
-                    GPSUtils.stopTrackLog();
-                    mGPSThread.stopThread();
-                    mMapGPSPos = new Point2D(0, 0);
-                    mGPSData = null;
-                    mZRotate.setAngle(0);
-                    drawShapes();
-                }
-            }
+            updateTrackMode();
         });
 
+        startReplayButton.setGraphic(new ImageView(new Image("/images/play.png")));
         startReplayButton.setOnAction(event -> {
             if (mTrackReplayThread != null) {
                 mTrackReplayThread.startThread();
-            }
-        });
-        stopReplayButton.setOnAction(event -> {
-            if (mTrackReplayThread != null) {
-                mTrackReplayMode = false;
-                mTrackReplayThread.stopThread();
-                try {
-                    mTrackReplayThread.join();
-                } catch (InterruptedException e) {
+                startReplayButton.setDisable(true);
+                stopReplayButton.setDisable(false);
+                pauseReplayButton.setDisable(false);
+                stepReplayButton.setDisable(false);
+            } else {
+                if (mCurrentTrackFile != null) {
+                    mTrackReplayThread = new TrackReplayThread();
+                    if (!mTrackReplayThread.setupReplay(mCurrentTrackFile, this)) {
+                        LogUtils.error("failed to setup replay thread");
+                        mTrackReplayThread = null;
+                        borderPane.setBottom(null);
+                    } else {
+                        mTrackReplayMode = true;
+                        mTrackReplayThread.startThread();
+                        startReplayButton.setDisable(true);
+                        stopReplayButton.setDisable(false);
+                        pauseReplayButton.setDisable(false);
+                        stepReplayButton.setDisable(false);
+                    }
                 }
-                mTrackReplayThread = null;
             }
         });
+        stopReplayButton.setGraphic(new ImageView(new Image("/images/stop.png")));
+        stopReplayButton.setOnAction(event -> {
+            stopReplay();
+
+            startReplayButton.setDisable(false);
+            stopReplayButton.setDisable(true);
+            pauseReplayButton.setDisable(true);
+            stepReplayButton.setDisable(true);
+
+            // reset state
+            mSelectdShape = null;
+            mSelectdOSMId = -1;
+            mPredictionWays.clear();
+            mNextEdgeList = new JsonArray();
+            mCurrentEdge = null;
+
+            drawShapes();
+        });
+        pauseReplayButton.setGraphic(new ImageView(new Image("/images/pause.png")));
         pauseReplayButton.setOnAction(event -> {
             if (mTrackReplayThread != null) {
                 mTrackReplayThread.pauseThread();
+            }
+        });
+        stepReplayButton.setGraphic(new ImageView(new Image("/images/next.png")));
+        stepReplayButton.setOnAction(event -> {
+            if (mTrackReplayThread != null) {
+                mTrackReplayThread.stepThread();
             }
         });
 
@@ -335,8 +348,8 @@ public class MainController implements Initializable, NMEAHandler {
             fileChooser.setTitle("Track file");
             File logDir = new File(System.getProperty("user.dir"), "logs");
             fileChooser.setInitialDirectory(logDir);
-            File trackFile = fileChooser.showOpenDialog(mPrimaryStage);
-            if (trackFile != null) {
+            mCurrentTrackFile = fileChooser.showOpenDialog(mPrimaryStage);
+            if (mCurrentTrackFile != null) {
                 borderPane.setBottom(trackButtons);
                 if (mTrackReplayThread != null) {
                     mTrackReplayMode = false;
@@ -347,17 +360,33 @@ public class MainController implements Initializable, NMEAHandler {
                     }
                     mTrackReplayThread = null;
                 }
+
+                mTrackMode = false;
+                updateTrackMode();
+
                 mTrackReplayThread = new TrackReplayThread();
                 mTrackReplayMode = true;
-                if (!mTrackReplayThread.setupReplay(trackFile, this)) {
+
+                if (!mTrackReplayThread.setupReplay(mCurrentTrackFile, this)) {
                     LogUtils.error("failed to setup replay thread");
                     mTrackReplayThread = null;
                     mTrackReplayMode = false;
                     borderPane.setBottom(null);
+                } else {
+                    startReplayButton.setDisable(false);
+                    stopReplayButton.setDisable(true);
+                    pauseReplayButton.setDisable(true);
+                    stepReplayButton.setDisable(true);
                 }
             } else {
                 borderPane.setBottom(null);
             }
+        });
+        mContextMenu.getItems().add(menuItem);
+        menuItem = new MenuItem(" Clear track ");
+        menuItem.setOnAction(ev -> {
+            stopReplay();
+            borderPane.setBottom(null);
         });
         mContextMenu.getItems().add(menuItem);
 
@@ -860,7 +889,7 @@ public class MainController implements Initializable, NMEAHandler {
         if (mGPSData == null) {
             return;
         }
-        //LogUtils.log("moveToGPSPos " + mGPSPos);
+        LogUtils.log("moveToGPSPos " + mGPSPos);
         mCenterLat = mGPSPos.getY();
         mCenterLon = mGPSPos.getX();
         int bearing = ((BigDecimal) mGPSData.get("bearing")).intValue();
@@ -1072,5 +1101,44 @@ public class MainController implements Initializable, NMEAHandler {
                 updateGPSPos(gpsData, force);
             }
         });
+    }
+
+    private void updateTrackMode() {
+        if (mTrackMode) {
+            mGPSData = null;
+            mGPSThread = new GPSThread();
+            if (!mGPSThread.startThread(MainController.this)) {
+                LogUtils.error("open port " + GPSThread.DEV_TTY_ACM_0 + " failed");
+                mMapGPSPos = new Point2D(0, 0);
+            } else {
+                try {
+                    GPSUtils.startTrackLog();
+                } catch (IOException e) {
+                    LogUtils.error("start GPS tracker failed", e);
+                }
+            }
+        } else {
+            if (mGPSThread != null) {
+                GPSUtils.stopTrackLog();
+                mGPSThread.stopThread();
+                mMapGPSPos = new Point2D(0, 0);
+                mGPSData = null;
+                mZRotate.setAngle(0);
+                drawShapes();
+            }
+        }
+        trackModeButton.setGraphic(new ImageView(new Image(mTrackMode ? "/images/gps.png" : "/images/gps-circle.png")));
+    }
+
+    private void stopReplay() {
+        if (mTrackReplayThread != null) {
+            mTrackReplayMode = false;
+            mTrackReplayThread.stopThread();
+            try {
+                mTrackReplayThread.join();
+            } catch (InterruptedException e) {
+            }
+            mTrackReplayThread = null;
+        }
     }
 }
