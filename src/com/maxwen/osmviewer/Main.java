@@ -45,6 +45,8 @@ public class Main extends Application {
         mScene = new Scene(root, 1280, 800, false, SceneAntialiasing.BALANCED);
         PerspectiveCamera camera = new PerspectiveCamera();
         mScene.setCamera(camera);
+        // to get sizes in setScene
+        root.layout();
         mController.setScene(mScene);
         primaryStage.setScene(mScene);
         primaryStage.show();
