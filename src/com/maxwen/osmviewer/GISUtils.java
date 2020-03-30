@@ -82,7 +82,7 @@ public class GISUtils {
     }
 
     public static JsonArray createTemporaryPoints(double lon1, double lat1, double lon2, double lat2, double frac,
-                                    double offsetStart, double offsetEnd, boolean addStart, boolean addEnd) {
+                                                  double offsetStart, double offsetEnd, boolean addStart, boolean addEnd) {
         double rlat1 = deg2rad(lat1);
         double rlon1 = deg2rad(lon1);
         double rlat2 = deg2rad(lat2);
@@ -161,5 +161,50 @@ public class GISUtils {
             return minDistance;
         }
         return -1;
+    }
+
+    public static double heading(double lon1, double lat1, double lon2, double lat2) {
+        lat1 = deg2rad(lat1);
+        lon1 = deg2rad(lon1);
+        lat2 = deg2rad(lat2);
+        lon2 = deg2rad(lon2);
+        return headingRad(lon1, lat1, lon2, lat2);
+    }
+
+    public static double headingRad(double lon1, double lat1, double lon2, double lat2) {
+        double v1 = Math.sin(lon1 - lon2) * Math.cos(lat2);
+        double v2 = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon1 - lon2);
+        if (Math.abs(v1) < 1e-15) {
+            v1 = 0.0;
+        }
+        if (Math.abs(v2) < 1e-15) {
+            v2 = 0.0;
+        }
+        return Math.atan2(v1, v2);
+    }
+
+    public static int headingDegrees(double lon1, double lat1, double lon2, double lat2) {
+        double h = 360.0 - rad2deg(heading(lon1, lat1, lon2, lat2));
+        if (h >= 360.0) {
+            h -= 360.0;
+        }
+        return (int) h;
+    }
+
+    public static int headingDegreesRad(double lon1, double lat1, double lon2, double lat2) {
+        double h = 360.0 - rad2deg(headingRad(lon1, lat1, lon2, lat2));
+        if (h >= 360.0) {
+            h -= 360.0;
+        }
+        return (int) h;
+    }
+
+    public static int headingDiffAbsolute(int heading1, int heading2) {
+        return Math.abs((heading1 + 180 - heading2) % 360 - 180);
+    }
+
+    public static int headingDiff(int heading1, int heading2) {
+        int diff = heading1 - heading2 + 180;
+        return diff % 360;
     }
 }

@@ -36,6 +36,7 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         LogUtils.log("start");
+
         FXMLLoader loader = new FXMLLoader(getClass().getResource("sample.fxml"));
         Parent root = loader.load();
 
@@ -101,8 +102,9 @@ public class Main extends Application {
     @Override
     public void stop() {
         LogUtils.log("stop");
-        DatabaseController.getInstance().disconnectAll();
         mController.stop();
+        DatabaseController.getInstance().disconnectAll();
+        Config.getInstance().save();
     }
 
     public static void main(String[] args) {
