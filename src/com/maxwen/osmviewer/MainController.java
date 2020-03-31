@@ -120,8 +120,8 @@ public class MainController implements Initializable, NMEAHandler {
     private Point2D mMapGPSPos;
     private TrackReplayThread mTrackReplayThread;
     private JsonObject mCurrentEdge;
-    private JsonArray mNextEdgeList;
-    private long mNextRefId;
+    private JsonArray mNextEdgeList = new JsonArray();
+    private long mNextRefId = -1;
     private File mCurrentTrackFile;
     private JsonObject mLastUsedEdge;
 
@@ -323,11 +323,7 @@ public class MainController implements Initializable, NMEAHandler {
             stepReplayButton.setDisable(true);
 
             // reset state
-            mSelectdShape = null;
-            mSelectdOSMId = -1;
-            mPredictionWays.clear();
-            mNextEdgeList = new JsonArray();
-            mCurrentEdge = null;
+            resetTracking();
 
             drawShapes();
         });
@@ -402,6 +398,8 @@ public class MainController implements Initializable, NMEAHandler {
 
                 mTrackReplayThread = new TrackReplayThread();
                 mTrackReplayMode = true;
+
+                resetTracking();
 
                 if (!mTrackReplayThread.setupReplay(mCurrentTrackFile, this)) {
                     LogUtils.error("failed to setup replay thread");
@@ -1034,32 +1032,16 @@ public class MainController implements Initializable, NMEAHandler {
                     if (edgeList.size() != 0) {
                         System.out.println("possible edges " + edgeList);
 
-                        /*for (int j = 0; j < edgeList.size(); j++) {
-                            JsonObject edge = (JsonObject) edgeList.get(j);
-                            System.out.println("try edge " + edge);
-                            int streetInfo = (int) edge.get("streetInfo");
-                            int streetTypeId = streetInfo & 15;
-                            if (lastStreetTypeId != -1 && lastStreetTypeId == streetTypeId) {
-                                System.out.println("use edge for same street type " + lastStreetTypeId + " -> " + streetTypeId + " " + edge);
-                                mCurrentEdge = edge;
-                                foundEdge = true;
-                                break;
-                            }
-                        }*/
-                        if (mCurrentEdge == null) {
-                            JsonObject edge = (JsonObject) edgeList.get(0);
-                            System.out.println("use minimal distance edge " + edge);
-                            mCurrentEdge = edge;
-                            foundEdge = true;
-                        }
-                        if (foundEdge) {
-                            mLastUsedEdge = mCurrentEdge;
-                            mNextRefId = 0;
-                            long currStartRef = (long) mCurrentEdge.get("startRef");
-                            long currEndRef = (long) mCurrentEdge.get("endRef");
-                            JsonArray nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(currStartRef, currEndRef);
-                            calPredicationWays(nextEdgeList);
-                        }
+                        JsonObject edge = (JsonObject) edgeList.get(0);
+                        System.out.println("use minimal distance edge " + edge);
+                        mCurrentEdge = edge;
+                        mLastUsedEdge = mCurrentEdge;
+                        foundEdge = true;
+
+                        // find out where we are going and set mNextRefId
+                        calcApproachingRef(bearing);
+                        JsonArray nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(mNextRefId, -1);
+                        calPredicationWays(nextEdgeList);
                     }
                 } else {
                     List<Double> bbox = createBBoxAroundPoint(mGPSPos.getX(), mGPSPos.getY(), 0.00008);
@@ -1073,17 +1055,36 @@ public class MainController implements Initializable, NMEAHandler {
                             System.err.println("prefer current edge");
                             searchNextEdge = false;
                             foundEdge = true;
+
+                            // find out where we are going and set mNextRefId
+                            if (mNextRefId == -1) {
+                                calcApproachingRef(bearing);
+                                JsonArray nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(mNextRefId, -1);
+                                calPredicationWays(nextEdgeList);
+                            }
                         }
 
                         if (searchNextEdge) {
                             JsonObject nextEdge = null;
                             boolean foundNext = false;
 
-                            JsonObject headingEdge = getNextEdgeWithBestHeading(bearing);
+                            JsonArray headingEdges = getNextEdgeWithBestHeading(bearing);
                             long headingEdgeId = -1;
-                            if (headingEdge != null) {
+                            JsonObject headingEdge = null;
+                            if (headingEdges.size() > 1) {
+                                System.out.println("delay because multiple best heading matching edges: " + headingEdges.size());
+                                // delay to resolve from pos in next round
+                                /*headingEdge = getClosestEdge(mGPSPos.getX(), mGPSPos.getY(), headingEdges, 30);
+                                if (headingEdge != null) {
+                                    headingEdgeId = (long) headingEdge.get("edgeId");
+                                    System.out.println("picked heading matching edge: " + headingEdgeId);
+                                }*/
+                                mCurrentEdge = null;
+                                return null;
+                            } else if (headingEdges.size() == 1) {
+                                headingEdge = (JsonObject) headingEdges.get(0);
                                 headingEdgeId = (long) headingEdge.get("edgeId");
-                                System.out.println("best heading matching edge: " + headingEdgeId);
+                                System.out.println("one best heading matching edge: " + headingEdgeId);
                             }
                             for (JsonObject edge : edgeMap.values()) {
                                 long edgeId = (long) edge.get("edgeId");
@@ -1136,8 +1137,6 @@ public class MainController implements Initializable, NMEAHandler {
                                 long nextStartRef = (long) nextEdge.get("startRef");
                                 long nextEndRef = (long) nextEdge.get("endRef");
 
-                                mNextRefId = 0;
-
                                 if (mCurrentEdge != null) {
                                     long currStartRef = (long) mCurrentEdge.get("startRef");
                                     long currEndRef = (long) mCurrentEdge.get("endRef");
@@ -1153,7 +1152,7 @@ public class MainController implements Initializable, NMEAHandler {
                                 foundEdge = true;
 
                                 JsonArray nextEdgeList = null;
-                                if (mNextRefId != 0) {
+                                if (mNextRefId != -1) {
                                     nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(mNextRefId, -1);
                                 } else {
                                     nextEdgeList = DatabaseController.getInstance().getEdgesWithStartOrEndRef(nextStartRef, nextEndRef);
@@ -1166,10 +1165,11 @@ public class MainController implements Initializable, NMEAHandler {
 
                 if (!foundEdge || mCurrentEdge == null) {
                     System.err.println("no matching next edge found");
-                    mLastUsedEdge = mCurrentEdge;
                     mCurrentEdge = null;
+                    return null;
+                    /*mLastUsedEdge = mCurrentEdge;
                     mSelectdShape = null;
-                    mSelectdOSMId = -1;
+                    mSelectdOSMId = -1;*/
                 } else {
                     if (mCurrentEdge != null) {
                         long osmId = (long) mCurrentEdge.get("osmId");
@@ -1209,7 +1209,7 @@ public class MainController implements Initializable, NMEAHandler {
             return;
         }
 
-        LinkedHashMap<Integer, JsonObject> predictionMap = new LinkedHashMap<>();
+        LinkedHashMap<Integer, JsonArray> predictionMap = new LinkedHashMap<>();
         long currentEdgeId = (long) mCurrentEdge.get("edgeId");
         int currentStreetInfo = (int) mCurrentEdge.get("streetInfo");
         int currentStreetTypeId = currentStreetInfo & 15;
@@ -1229,7 +1229,7 @@ public class MainController implements Initializable, NMEAHandler {
                 int oneway = (streetInfo & 63) >> 4;
                 int roundabout = (streetInfo & 127) >> 6;
 
-                if (mNextRefId != 0) {
+                if (mNextRefId != -1) {
                     if (oneway != 0) {
                         if (!OSMUtils.isValidOnewayEnter(oneway, mNextRefId, nextEdge)) {
                             System.err.println("forbidden oneway enter " + nextEdge);
@@ -1247,7 +1247,13 @@ public class MainController implements Initializable, NMEAHandler {
                 if (streetTypeId == currentStreetTypeId) {
                     quality += 10;
                 }
-                predictionMap.put(quality, nextEdge);
+                if (predictionMap.containsKey(quality)) {
+                    predictionMap.get(quality).add(nextEdge);
+                } else {
+                    JsonArray edgeList = new JsonArray();
+                    edgeList.add(nextEdge);
+                    predictionMap.put(quality, edgeList);
+                }
                 mPredictionWays.add((long) nextEdge.get("osmId"));
             }
         }
@@ -1257,11 +1263,14 @@ public class MainController implements Initializable, NMEAHandler {
         System.out.println("calPredicationWays currentEdge = " + currentEdgeId + " streetTypeId= " + currentStreetTypeId + " qualityList = " + qualityList);
 
         for (int i = qualityList.size() - 1; i >= 0; i--) {
-            JsonObject nextEdge = predictionMap.get(qualityList.get(i));
-            int streetInfo = (int) nextEdge.get("streetInfo");
-            int streetTypeId = streetInfo & 15;
-            mNextEdgeList.add(nextEdge);
-            System.out.println("calPredicationWays nextEdge = " + nextEdge + " streetTypeId = " + streetTypeId);
+            JsonArray edgeList = predictionMap.get(qualityList.get(i));
+            for (int j = 0; j < edgeList.size(); j++) {
+                JsonObject nextEdge = (JsonObject) edgeList.get(j);
+                int streetInfo = (int) nextEdge.get("streetInfo");
+                int streetTypeId = streetInfo & 15;
+                mNextEdgeList.add(nextEdge);
+                System.out.println("calPredicationWays nextEdge = " + nextEdge + " streetTypeId = " + streetTypeId);
+            }
         }
     }
 
@@ -1352,10 +1361,9 @@ public class MainController implements Initializable, NMEAHandler {
         }
     }
 
-    private JsonObject getNextEdgeWithBestHeading(int bearing) {
+    private JsonArray getNextEdgeWithBestHeading(int bearing) {
         long currentEdgeId = (long) mCurrentEdge.get("edgeId");
-        int minDiff = 360;
-        JsonObject bestEdge = null;
+        JsonArray bestEdgeList = new JsonArray();
         for (int i = 0; i < mNextEdgeList.size(); i++) {
             JsonObject edge = (JsonObject) mNextEdgeList.get(i);
             long edgeId = (long) edge.get("edgeId");
@@ -1363,20 +1371,100 @@ public class MainController implements Initializable, NMEAHandler {
                 continue;
             }
             JsonArray coords = (JsonArray) edge.get("coords");
-            JsonArray pos0 = (JsonArray) coords.get(0);
-            JsonArray pos1 = (JsonArray) coords.get(coords.size() - 1);
-            System.out.println(pos0 + " -> " + pos1);
+            JsonArray pos0 = null;
+            JsonArray pos1 = null;
+            int diff1 = 360;
+            int diff2 = 360;
 
-            int heading1 = GISUtils.headingDegrees((double) pos0.get(0), (double) pos0.get(1), (double) pos1.get(0), (double) pos1.get(1));
-            int heading2 = GISUtils.headingDegrees((double) pos1.get(0), (double) pos1.get(1), (double) pos0.get(0), (double) pos0.get(1));
-            int diff1 = GISUtils.headingDiffAbsolute(bearing, heading1);
-            int diff2 = GISUtils.headingDiffAbsolute(bearing, heading2);
+            if (mNextRefId != -1) {
+                long startRef = (long) edge.get("startRef");
+                long endRef = (long) edge.get("endRef");
+                if (mNextRefId == startRef) {
+                    pos0 = (JsonArray) coords.get(0);
+                    pos1 = (JsonArray) coords.get(1);
+                } else if (mNextRefId == endRef) {
+                    pos0 = (JsonArray) coords.get(coords.size() - 1);
+                    pos1 = (JsonArray) coords.get(coords.size() - 2);
+                }
 
-            if (diff1 < 15 || diff2 < 15) {
-                bestEdge = edge;
-                break;
+                int heading = GISUtils.headingDegrees((double) pos0.get(0), (double) pos0.get(1), (double) pos1.get(0), (double) pos1.get(1));
+                diff1 = GISUtils.headingDiffAbsolute(bearing, heading);
+            } else {
+                pos0 = (JsonArray) coords.get(0);
+                pos1 = (JsonArray) coords.get(coords.size() - 1);
+
+                int heading1 = GISUtils.headingDegrees((double) pos0.get(0), (double) pos0.get(1), (double) pos1.get(0), (double) pos1.get(1));
+                int heading2 = GISUtils.headingDegrees((double) pos1.get(0), (double) pos1.get(1), (double) pos0.get(0), (double) pos0.get(1));
+                diff1 = GISUtils.headingDiffAbsolute(bearing, heading1);
+                diff2 = GISUtils.headingDiffAbsolute(bearing, heading2);
+            }
+
+            System.out.println(diff1 + " " + diff2);
+
+            if (diff1 < 30 || diff2 < 30) {
+                bestEdgeList.add(edge);
             }
         }
-        return bestEdge;
+        return bestEdgeList;
+    }
+
+    public JsonObject getClosestEdge(double lon, double lat, JsonArray edgeList, int maxDistance) {
+        JsonObject closestEdge = null;
+        for (int i = 0; i < edgeList.size(); i++) {
+            JsonObject edge = (JsonObject) edgeList.get(i);
+            JsonArray coords = (JsonArray) edge.get("coords");
+            JsonArray coord = (JsonArray) coords.get(0);
+            double lon1 = coord.getDouble(0);
+            double lat1 = coord.getDouble(1);
+            int minDistance = maxDistance;
+            for (int j = 1; j < coords.size(); j++) {
+                coord = (JsonArray) coords.get(j);
+                double lon2 = coord.getDouble(0);
+                double lat2 = coord.getDouble(1);
+
+                int distance = GISUtils.isMinimalDistanceOnLineBetweenPoints(lon, lat, lon1, lat1, lon2, lat2, maxDistance);
+                if (distance != -1) {
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestEdge = edge;
+                    }
+                }
+            }
+        }
+        return closestEdge;
+    }
+
+    private void resetTracking() {
+        mCurrentEdge = null;
+        mNextRefId = -1;
+        mLastUsedEdge = null;
+        if (mNextEdgeList != null) {
+            mNextEdgeList.clear();
+        }
+        if (mPredictionWays != null) {
+            mPredictionWays.clear();
+        }
+        mSelectdShape = null;
+    }
+
+    private void calcApproachingRef(int bearing) {
+        long currStartRef = (long) mCurrentEdge.get("startRef");
+        long currEndRef = (long) mCurrentEdge.get("endRef");
+
+        JsonArray coords = (JsonArray) mCurrentEdge.get("coords");
+        JsonArray pos0 = (JsonArray) coords.get(0);
+        JsonArray pos1 = (JsonArray) coords.get(coords.size() - 1);
+
+        int heading1 = GISUtils.headingDegrees(mGPSPos.getX(), mGPSPos.getY(), (double) pos0.get(0), (double) pos0.get(1));
+        int heading2 = GISUtils.headingDegrees(mGPSPos.getX(), mGPSPos.getY(), (double) pos1.get(0), (double) pos1.get(1));
+
+        int diff1 = GISUtils.headingDiffAbsolute(bearing, heading1);
+        int diff2 = GISUtils.headingDiffAbsolute(bearing, heading2);
+
+        if (diff1 < diff2) {
+            mNextRefId = currStartRef;
+        } else {
+            mNextRefId = currEndRef;
+        }
     }
 }
